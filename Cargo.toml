@@ -1,0 +1,12 @@
+[package]
+name = "wintun"
+version = "0.1.0"
+edition = "2018"
+authors = ["null.black Inc. <opensource@null.black>", "Troy Neubauer <troy@null.black>"]
+license = "MIT OR GPLv2"
+
+[dependencies]
+
+
+[build-dependencies]
+bindgen = "0.58.1"
