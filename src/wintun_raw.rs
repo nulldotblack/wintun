@@ -104,10 +104,8 @@ pub union _GUID__bindgen_ty_1 {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _GUID__bindgen_ty_1__bindgen_ty_1 {
-    pub Data1: ::std::os::raw::c_ulong,
-    pub Data2: ::std::os::raw::c_ushort,
-    pub Data3: ::std::os::raw::c_ushort,
-    pub Data4: [::std::os::raw::c_uchar; 8usize],
+    pub a: ::std::os::raw::c_ulonglong,
+    pub b: ::std::os::raw::c_ulonglong,
 }
 #[test]
 fn bindgen_test_layout__GUID__bindgen_ty_1__bindgen_ty_1() {
@@ -118,7 +116,7 @@ fn bindgen_test_layout__GUID__bindgen_ty_1__bindgen_ty_1() {
     );
     assert_eq!(
         ::std::mem::align_of::<_GUID__bindgen_ty_1__bindgen_ty_1>(),
-        4usize,
+        8usize,
         concat!(
             "Alignment of ",
             stringify!(_GUID__bindgen_ty_1__bindgen_ty_1)
@@ -126,50 +124,26 @@ fn bindgen_test_layout__GUID__bindgen_ty_1__bindgen_ty_1() {
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<_GUID__bindgen_ty_1__bindgen_ty_1>())).Data1 as *const _ as usize
+            &(*(::std::ptr::null::<_GUID__bindgen_ty_1__bindgen_ty_1>())).a as *const _ as usize
         },
         0usize,
         concat!(
             "Offset of field: ",
             stringify!(_GUID__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(Data1)
+            stringify!(a)
         )
     );
     assert_eq!(
         unsafe {
-            &(*(::std::ptr::null::<_GUID__bindgen_ty_1__bindgen_ty_1>())).Data2 as *const _ as usize
-        },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_GUID__bindgen_ty_1__bindgen_ty_1),
-            "::",
-            stringify!(Data2)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<_GUID__bindgen_ty_1__bindgen_ty_1>())).Data3 as *const _ as usize
-        },
-        6usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_GUID__bindgen_ty_1__bindgen_ty_1),
-            "::",
-            stringify!(Data3)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<_GUID__bindgen_ty_1__bindgen_ty_1>())).Data4 as *const _ as usize
+            &(*(::std::ptr::null::<_GUID__bindgen_ty_1__bindgen_ty_1>())).b as *const _ as usize
         },
         8usize,
         concat!(
             "Offset of field: ",
             stringify!(_GUID__bindgen_ty_1__bindgen_ty_1),
             "::",
-            stringify!(Data4)
+            stringify!(b)
         )
     );
 }
@@ -182,7 +156,7 @@ fn bindgen_test_layout__GUID__bindgen_ty_1() {
     );
     assert_eq!(
         ::std::mem::align_of::<_GUID__bindgen_ty_1>(),
-        4usize,
+        8usize,
         concat!("Alignment of ", stringify!(_GUID__bindgen_ty_1))
     );
     assert_eq!(
@@ -205,7 +179,7 @@ fn bindgen_test_layout__GUID() {
     );
     assert_eq!(
         ::std::mem::align_of::<_GUID>(),
-        4usize,
+        8usize,
         concat!("Alignment of ", stringify!(_GUID))
     );
 }
@@ -218,7 +192,7 @@ pub type WINTUN_ENUM_CALLBACK = ::std::option::Option<
 pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_INFO: WINTUN_LOGGER_LEVEL = 0;
 pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_WARN: WINTUN_LOGGER_LEVEL = 1;
 pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_ERR: WINTUN_LOGGER_LEVEL = 2;
-pub type WINTUN_LOGGER_LEVEL = ::std::os::raw::c_int;
+pub type WINTUN_LOGGER_LEVEL = ::std::os::raw::c_uint;
 pub type WINTUN_LOGGER_CALLBACK =
     ::std::option::Option<unsafe extern "C" fn(Level: WINTUN_LOGGER_LEVEL, Message: *const WCHAR)>;
 #[repr(C)]

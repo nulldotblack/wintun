@@ -6,7 +6,7 @@ authors = ["null.black Inc. <opensource@null.black>", "Troy Neubauer <troy@null.
 license = "MIT OR GPLv2"
 
 [dependencies]
+widestring = "0.4.3"
+libloading = "0.7"
 
-
-[build-dependencies]
-bindgen = "0.58.1"
+winapi = { version = "0.3", features = ["synchapi"] }

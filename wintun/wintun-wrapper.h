@@ -11,10 +11,8 @@ typedef unsigned int DWORD;
 typedef struct _GUID {
     union {
     struct {
-        unsigned long  Data1;
-        unsigned short Data2;
-        unsigned short Data3;
-        unsigned char  Data4[8];
+        unsigned long long a;
+        unsigned long long b;
     };
     unsigned char Bytes[16];
     };
