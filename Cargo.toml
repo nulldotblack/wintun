@@ -6,7 +6,13 @@ authors = ["null.black Inc. <opensource@null.black>", "Troy Neubauer <troy@null.
 license = "MIT OR GPLv2"
 
 [dependencies]
-widestring = "0.4.3"
+widestring = "0.4"
 libloading = "0.7"
 
-winapi = { version = "0.3", features = ["synchapi"] }
+once_cell = "1.8"
+log = "0.4"
+
+winapi = { version = "0.3", features = ["synchapi", "winbase", "winerror"] }
+
+[dev-dependencies]
+env_logger = "0.8"

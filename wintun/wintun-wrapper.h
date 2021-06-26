@@ -18,6 +18,8 @@ typedef struct _GUID {
     };
 } GUID;
 
+#define WINTUN_API __stdcall
+
 //Begin WinTun definitions:
 
 // Maximum pool name length including zero terminator
@@ -50,7 +52,7 @@ Param : An application - defined value passed to the WintunEnumAdapters.
 Returns
 
 Non - zero to continue iterating adapters; zero to stop.*/
-typedef BOOL(*WINTUN_ENUM_CALLBACK) (WINTUN_ADAPTER_HANDLE Adapter, LPARAM Param);
+typedef BOOL(WINTUN_API *WINTUN_ENUM_CALLBACK) (WINTUN_ADAPTER_HANDLE Adapter, LPARAM Param);
 
 //Determines the level of logging, passed to WINTUN_LOGGER_CALLBACK.
 enum WINTUN_LOGGER_LEVEL {
@@ -66,7 +68,7 @@ Parameters
 
 Level : Message level.
 Message : Message text.*/
-typedef void(*WINTUN_LOGGER_CALLBACK) (enum WINTUN_LOGGER_LEVEL Level, const WCHAR* Message);
+typedef void(WINTUN_API *WINTUN_LOGGER_CALLBACK) (enum WINTUN_LOGGER_LEVEL Level, const WCHAR* Message);
 
 /*
     Creates a new Wintun adapter.
@@ -82,7 +84,7 @@ typedef void(*WINTUN_LOGGER_CALLBACK) (enum WINTUN_LOGGER_LEVEL Level, const WCH
 
     If the function succeeds, the return value is the adapter handle.Must be released with WintunFreeAdapter.If the function fails, the return value is NULL.To get extended error information, call GetLastError.
 */
-WINTUN_ADAPTER_HANDLE WintunCreateAdapter(const WCHAR* Pool, const WCHAR* Name, const GUID* RequestedGUID, BOOL* RebootRequired);
+WINTUN_ADAPTER_HANDLE WINTUN_API WintunCreateAdapter(const WCHAR* Pool, const WCHAR* Name, const GUID* RequestedGUID, BOOL* RebootRequired);
 
 
 
@@ -100,7 +102,7 @@ WINTUN_ADAPTER_HANDLE WintunCreateAdapter(const WCHAR* Pool, const WCHAR* Name, 
 ERROR_ALREADY_EXISTS if adapter is found but not a Wintun - class or
     not a member of the pool WintunDeleteAdapter()
 */
-WINTUN_ADAPTER_HANDLE WintunOpenAdapter(const WCHAR * Pool, const WCHAR * Name);
+WINTUN_ADAPTER_HANDLE WINTUN_API WintunOpenAdapter(const WCHAR * Pool, const WCHAR * Name);
 
 /*
 Deletes a Wintun adapter.
@@ -125,7 +127,7 @@ the return value is nonzero.If the function fails,
 the return value is zero.To get extended error information,
 call GetLastError .WintunEnumAdapters()
 */
-BOOL WintunDeleteAdapter(WINTUN_ADAPTER_HANDLE Adapter, BOOL ForceCloseSessions, BOOL *RebootRequired);
+BOOL WINTUN_API WintunDeleteAdapter(WINTUN_ADAPTER_HANDLE Adapter, BOOL ForceCloseSessions, BOOL *RebootRequired);
 
 
 
@@ -145,7 +147,7 @@ BOOL WintunDeleteAdapter(WINTUN_ADAPTER_HANDLE Adapter, BOOL ForceCloseSessions,
 
     If the function succeeds, the return value is nonzero.If the function fails, the return value is zero.To get extended error information, call GetLastError.
 */
-BOOL WintunEnumAdapters(const WCHAR *Pool, WINTUN_ENUM_CALLBACK Callback, LPARAM Param);
+BOOL WINTUN_API WintunEnumAdapters(const WCHAR *Pool, WINTUN_ENUM_CALLBACK Callback, LPARAM Param);
 
 
 /*
@@ -169,7 +171,7 @@ BOOL WintunEnumAdapters(const WCHAR *Pool, WINTUN_ENUM_CALLBACK Callback, LPARAM
 
     If the function succeeds, the return value is nonzero.If the function fails, the return value is zero.To get extended error information, call GetLastError.
 */
-void WintunFreeAdapter(WINTUN_ADAPTER_HANDLE Adapter);
+void WINTUN_API WintunFreeAdapter(WINTUN_ADAPTER_HANDLE Adapter);
 
 
 #define ULONG64 long long unsigned int
@@ -193,7 +195,7 @@ typedef NET_LUID_LH NET_LUID;
     Adapter : Adapter handle obtained with WintunOpenAdapter or WintunCreateAdapter
     Luid : Pointer to LUID to receive adapter LUID.
 */
-void WintunGetAdapterLuid(WINTUN_ADAPTER_HANDLE Adapter, NET_LUID * Luid);
+void WINTUN_API WintunGetAdapterLuid(WINTUN_ADAPTER_HANDLE Adapter, NET_LUID * Luid);
 
 /*
     Returns the name of the Wintun adapter.
@@ -207,7 +209,7 @@ void WintunGetAdapterLuid(WINTUN_ADAPTER_HANDLE Adapter, NET_LUID * Luid);
 
     If the function succeeds, the return value is nonzero.If the function fails, the return value is zero.To get extended error information, call GetLastError.
 */
-BOOL WintunGetAdapterName(WINTUN_ADAPTER_HANDLE Adapter, WCHAR * Name);
+BOOL WINTUN_API WintunGetAdapterName(WINTUN_ADAPTER_HANDLE Adapter, WCHAR * Name);
 
 /*
     Sets name of the Wintun adapter.
@@ -221,7 +223,7 @@ BOOL WintunGetAdapterName(WINTUN_ADAPTER_HANDLE Adapter, WCHAR * Name);
 
     If the function succeeds, the return value is nonzero.If the function fails, the return value is zero.To get extended error information, call GetLastError.
 */
-BOOL WintunSetAdapterName(WINTUN_ADAPTER_HANDLE Adapter, const WCHAR* Name);
+BOOL WINTUN_API WintunSetAdapterName(WINTUN_ADAPTER_HANDLE Adapter, const WCHAR* Name);
 
 
 /*
@@ -231,7 +233,7 @@ BOOL WintunSetAdapterName(WINTUN_ADAPTER_HANDLE Adapter, const WCHAR* Name);
 
     If the function succeeds, the return value is the version number.If the function fails, the return value is zero.To get extended error information, call GetLastError.Possible errors include the following : ERROR_FILE_NOT_FOUND Wintun not loaded
 */
-DWORD WintunGetRunningDriverVersion(void);
+DWORD WINTUN_API WintunGetRunningDriverVersion(void);
     
 
 /*
@@ -241,7 +243,7 @@ DWORD WintunGetRunningDriverVersion(void);
 
     NewLogger : Pointer to callback function to use as a new global logger.NewLogger may be called from various threads concurrently.Should the logging require serialization, you must handle serialization in NewLogger.Set to NULL to disable.
 */
-void WintunSetLogger(WINTUN_LOGGER_CALLBACK NewLogger);
+void WINTUN_API WintunSetLogger(WINTUN_LOGGER_CALLBACK NewLogger);
 
 /*
     Starts Wintun session.
@@ -255,7 +257,7 @@ void WintunSetLogger(WINTUN_LOGGER_CALLBACK NewLogger);
 
     Wintun session handle.Must be released with WintunEndSession.If the function fails, the return value is NULL.To get extended error information, call GetLastError.
 */
-WINTUN_SESSION_HANDLE WintunStartSession(WINTUN_ADAPTER_HANDLE Adapter, DWORD Capacity);
+WINTUN_SESSION_HANDLE WINTUN_API WintunStartSession(WINTUN_ADAPTER_HANDLE Adapter, DWORD Capacity);
 
 
 /*
@@ -265,7 +267,7 @@ WINTUN_SESSION_HANDLE WintunStartSession(WINTUN_ADAPTER_HANDLE Adapter, DWORD Ca
 
     Session : Wintun session handle obtained with WintunStartSession
 */
-void WintunEndSession(WINTUN_SESSION_HANDLE Session);
+void WINTUN_API WintunEndSession(WINTUN_SESSION_HANDLE Session);
 
 
 /*
@@ -279,7 +281,7 @@ void WintunEndSession(WINTUN_SESSION_HANDLE Session);
 
     Pointer to receive event handle to wait for available data when reading.Should WintunReceivePackets return ERROR_NO_MORE_ITEMS(after spinning on it for a while under heavy load), wait for this event to become signaled before retrying WintunReceivePackets.Do not call CloseHandle on this event - it is managed by the session.
 */
-HANDLE WintunGetReadWaitEvent(WINTUN_SESSION_HANDLE Session);
+HANDLE WINTUN_API WintunGetReadWaitEvent(WINTUN_SESSION_HANDLE Session);
 
 
 /*
@@ -295,7 +297,7 @@ HANDLE WintunGetReadWaitEvent(WINTUN_SESSION_HANDLE Session);
     Pointer to layer 3 IPv4 or IPv6 packet.Client may modify its content at will.If the function fails, the return value is NULL.To get extended error information, call GetLastError.Possible errors include the following : ERROR_HANDLE_EOF Wintun adapter is terminating;
 ERROR_NO_MORE_ITEMS Wintun buffer is exhausted; ERROR_INVALID_DATA Wintun buffer is corrupt
 */
-BYTE * WintunReceivePacket(WINTUN_SESSION_HANDLE Session, DWORD * PacketSize);
+BYTE * WINTUN_API WintunReceivePacket(WINTUN_SESSION_HANDLE Session, DWORD * PacketSize);
 /*
     Releases internal buffer after the received packet has been processed by the client.This function is thread - safe.
 
@@ -304,7 +306,7 @@ BYTE * WintunReceivePacket(WINTUN_SESSION_HANDLE Session, DWORD * PacketSize);
     Session : Wintun session handle obtained with WintunStartSession
     Packet : Packet obtained with WintunReceivePacket
 */
-void WintunReleaseReceivePacket(WINTUN_SESSION_HANDLE Session, const BYTE * Packet);
+void WINTUN_API WintunReleaseReceivePacket(WINTUN_SESSION_HANDLE Session, const BYTE * Packet);
 
 
     /*Allocates memory for a packet to send.After the memory is filled with packet data, call WintunSendPacket to sendand release internal buffer.WintunAllocateSendPacket is thread - safe and the WintunAllocateSendPacket order of calls define the packet sending order.
@@ -318,7 +320,7 @@ void WintunReleaseReceivePacket(WINTUN_SESSION_HANDLE Session, const BYTE * Pack
 
     Returns pointer to memory where to prepare layer 3 IPv4 or IPv6 packet for sending.If the function fails, the return value is NULL.To get extended error information, call GetLastError.Possible errors include the following : ERROR_HANDLE_EOF Wintun adapter is terminating;
 ERROR_BUFFER_OVERFLOW Wintun buffer is full;*/
-BYTE * WintunAllocateSendPacket(WINTUN_SESSION_HANDLE Session, DWORD PacketSize);
+BYTE * WINTUN_API WintunAllocateSendPacket(WINTUN_SESSION_HANDLE Session, DWORD PacketSize);
 
 /*
             Sends the packetand releases internal buffer
@@ -333,5 +335,5 @@ BYTE * WintunAllocateSendPacket(WINTUN_SESSION_HANDLE Session, DWORD PacketSize)
 
     Session : Wintun session handle obtained with WintunStartSession Packet
     : Packet obtained with WintunAllocateSendPacket*/
-void WintunSendPacket(WINTUN_SESSION_HANDLE Session, const BYTE *Packet);
+void WINTUN_API WintunSendPacket(WINTUN_SESSION_HANDLE Session, const BYTE *Packet);
 

@@ -4,8 +4,8 @@ pub type WintunError = Box<dyn std::error::Error>;
 
 #[derive(Debug)]
 pub struct OutOfRangeData<T> {
-    range: std::ops::RangeInclusive<T>,
-    value: T,
+    pub(crate) range: std::ops::RangeInclusive<T>,
+    pub(crate) value: T,
 }
 
 #[derive(Debug)]

@@ -192,7 +192,7 @@ pub type WINTUN_ENUM_CALLBACK = ::std::option::Option<
 pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_INFO: WINTUN_LOGGER_LEVEL = 0;
 pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_WARN: WINTUN_LOGGER_LEVEL = 1;
 pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_ERR: WINTUN_LOGGER_LEVEL = 2;
-pub type WINTUN_LOGGER_LEVEL = ::std::os::raw::c_uint;
+pub type WINTUN_LOGGER_LEVEL = ::std::os::raw::c_int;
 pub type WINTUN_LOGGER_CALLBACK =
     ::std::option::Option<unsafe extern "C" fn(Level: WINTUN_LOGGER_LEVEL, Message: *const WCHAR)>;
 #[repr(C)]

@@ -1,11 +1,13 @@
 use crate::session;
 use crate::wintun_raw;
-
 use crate::error;
+
 use std::ptr;
 use std::sync::Arc;
 
+use once_cell::sync::OnceCell;
 use widestring::U16CString;
+use log::*;
 
 pub struct Adapter {
     adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
@@ -39,7 +41,7 @@ impl Adapter {
 
     /// Creates a new wintun adapter
     pub fn create(
-        wintun: Arc<wintun_raw::wintun>,
+        wintun: &Arc<wintun_raw::wintun>,
         pool: &str,
         name: &str,
         guid: Option<u128>,
@@ -60,6 +62,8 @@ impl Adapter {
         let guid_ptr = guid.map_or(ptr::null(), |_| &guid_struct as *const wintun_raw::GUID);
 
         let mut reboot_required = 0u8;
+        
+        crate::log::set_default_logger_if_unset(&wintun);
 
         //SAFETY: the function is loaded from the wintun dll properly, we are providing valid
         //pointers, and all the strings are correct null terminated UTF-16. This safety rationale
@@ -87,7 +91,7 @@ impl Adapter {
     }
 
     pub fn open(
-        wintun: Arc<wintun_raw::wintun>,
+        wintun: &Arc<wintun_raw::wintun>,
         pool: &str,
         name: &str,
     ) -> Result<Adapter, error::WintunError> {
@@ -95,6 +99,8 @@ impl Adapter {
 
         let pool_utf16 = U16CString::from_str(pool)?;
         let name_utf16 = U16CString::from_str(name)?;
+
+        crate::log::set_default_logger_if_unset(&wintun);
 
         let result = unsafe { wintun.WintunOpenAdapter(pool_utf16.as_ptr(), name_utf16.as_ptr()) };
 
@@ -108,12 +114,12 @@ impl Adapter {
         }
     }
 
-    pub fn delete(adapter: Adapter, force_close_sessions: bool) -> Result<bool, ()> {
+    pub fn delete(self, force_close_sessions: bool) -> Result<bool, ()> {
         let mut reboot_required = 0u8;
 
         let result = unsafe {
-            adapter.wintun.WintunDeleteAdapter(
-                adapter.adapter,
+            self.wintun.WintunDeleteAdapter(
+                self.adapter,
                 u8::from(force_close_sessions),
                 &mut reboot_required as *mut u8,
             )
@@ -146,8 +152,9 @@ impl Adapter {
             Err("WintunStartSession failed".into())
         } else {
             Ok(session::Session {
-                session: result,
+                session: session::UnsafeHandle(result),
                 wintun: self.wintun.clone(),
+                read_event: OnceCell::new(),
             })
         }
     }
@@ -155,6 +162,7 @@ impl Adapter {
 
 impl Drop for Adapter {
     fn drop(&mut self) {
+        trace!("dropping");
         //Free adapter on drop
         //This is why we need an Arc of wintun
         unsafe { self.wintun.WintunFreeAdapter(self.adapter) };

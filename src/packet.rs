@@ -1,4 +1,5 @@
 use crate::session;
+use log::*;
 
 pub(crate) enum Kind {
     SendPacketPending, //Send packet type, but not sent yet
@@ -8,7 +9,7 @@ pub(crate) enum Kind {
 
 pub struct Packet<'a> {
     pub(crate) kind: Kind,
-    pub(crate) bytes: &'a [u8],
+    pub(crate) bytes: &'a mut [u8],
     pub(crate) session: &'a session::Session,
 }
 
@@ -26,12 +27,13 @@ impl<'a> AsMut<[u8]> for Packet<'a> {
 
 impl<'a> Drop for Packet<'a> {
     fn drop(&mut self) {
+        trace!("dropping");
         match self.kind {
             Kind::ReceivePacket => {
                 unsafe {
                     self.session
                         .wintun
-                        .WintunReleaseReceivePacket(self.session.session, self.bytes.as_ptr())
+                        .WintunReleaseReceivePacket(self.session.session.0, self.bytes.as_ptr())
                 };
             }
             Kind::SendPacketPending => {
