@@ -25,9 +25,18 @@ impl<'a> AsMut<[u8]> for Packet<'a> {
     }
 }
 
+impl<'a> Packet<'a> {
+    pub fn bytes_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes
+    }
+
+    pub fn bytes(&mut self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 impl<'a> Drop for Packet<'a> {
     fn drop(&mut self) {
-        trace!("dropping");
         match self.kind {
             Kind::ReceivePacket => {
                 unsafe {

@@ -16,3 +16,6 @@ winapi = { version = "0.3", features = ["synchapi", "winbase", "winerror"] }
 
 [dev-dependencies]
 env_logger = "0.8"
+winapi = { version = "0.3", features = ["synchapi", "winbase", "winerror", "netioapi", "iptypes", "iphlpapi"] }
+packet = "0.1.4"
+pcap-file = "1.1.1"

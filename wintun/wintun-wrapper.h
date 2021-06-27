@@ -18,12 +18,20 @@ typedef struct _GUID {
     };
 } GUID;
 
+
+#define ULONG64 long long unsigned int
+
+typedef ULONG64 NET_LUID;
+
 #define WINTUN_API __stdcall
 
 //Begin WinTun definitions:
 
-// Maximum pool name length including zero terminator
+// Maximum pool name length (UTF-16 codepoints) including zero terminator
 #define WINTUN_MAX_POOL 256
+
+// Maximum adapter name length (UTF-16 codepoints) including zero terminator
+#define MAX_ADAPTER_NAME 128
 
 // Minimum ring capacity.
 #define WINTUN_MIN_RING_CAPACITY 0x20000 /* 128kiB */
@@ -174,19 +182,6 @@ BOOL WINTUN_API WintunEnumAdapters(const WCHAR *Pool, WINTUN_ENUM_CALLBACK Callb
 void WINTUN_API WintunFreeAdapter(WINTUN_ADAPTER_HANDLE Adapter);
 
 
-#define ULONG64 long long unsigned int
-
-typedef union _NET_LUID_LH {
-    ULONG64 Value;
-    struct {
-        ULONG64 Reserved : 24;
-        ULONG64 NetLuidIndex : 24;
-        ULONG64 IfType : 16;
-    } Info;
-} NET_LUID_LH, * PNET_LUID_LH;
-
-typedef NET_LUID_LH NET_LUID;
-
 /*
     Returns the LUID of the adapter.
 
@@ -195,7 +190,7 @@ typedef NET_LUID_LH NET_LUID;
     Adapter : Adapter handle obtained with WintunOpenAdapter or WintunCreateAdapter
     Luid : Pointer to LUID to receive adapter LUID.
 */
-void WINTUN_API WintunGetAdapterLuid(WINTUN_ADAPTER_HANDLE Adapter, NET_LUID * Luid);
+void WINTUN_API WintunGetAdapterLUID(WINTUN_ADAPTER_HANDLE Adapter, NET_LUID * Luid);
 
 /*
     Returns the name of the Wintun adapter.

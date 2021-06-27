@@ -75,14 +75,11 @@ impl Session {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
             let last_error = unsafe { GetLastError() };
             if last_error == ERROR_NO_MORE_ITEMS {
-                trace!("Got no more items");
                 Ok(None)
             } else {
-                trace!("Got error: {}", last_error);
                 Err(())
             }
         } else {
-            info!("Got packet length {}", size);
             Ok(Some(packet::Packet {
                 kind: packet::Kind::ReceivePacket,
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -97,43 +94,34 @@ impl Session {
         Ok(self
             .read_event
             .get_or_init(|| unsafe {
-                info!("Getting read wait event!");
                 UnsafeHandle(self.wintun.WintunGetReadWaitEvent(self.session.0) as winnt::HANDLE)
             })
             .0)
     }
 
     pub fn receive_blocking<'a>(&'a self) -> Result<packet::Packet, ()> {
-        //Try 5 times to receive without blocking
-        for _ in 0..5 {
-            match self.try_receive() {
-                Err(err) => return Err(err),
-                Ok(Some(packet)) => return Ok(packet),
-                Ok(None) => {}
-            }
-        }
-        let result = unsafe { WaitForSingleObject(self.get_read_wait_event()?, winbase::INFINITE) };
-        match result {
-            winbase::WAIT_ABANDONED => Err(()),
-            winerror::WAIT_TIMEOUT => Err(()),
-            winbase::WAIT_FAILED => Err(()),
-            winbase::WAIT_OBJECT_0 => {
-                info!("Wait for single object completed successfully");
+        loop {
+            //Try 5 times to receive without blocking
+            for _ in 0..5 {
                 match self.try_receive() {
-                    Err(err) => Err(err),
-                    Ok(Some(packet)) => Ok(packet),
-                    //We still couldn't read a packet after the event was signaled
-                    Ok(None) => Err(()),
+                    Err(err) => return Err(err),
+                    Ok(Some(packet)) => return Ok(packet),
+                    Ok(None) => {}
                 }
             }
-            _ => panic!("WaitForSingleObject returned unknown result: {}", result),
+            let result =
+                unsafe { WaitForSingleObject(self.get_read_wait_event()?, winbase::INFINITE) };
+            match result {
+                winbase::WAIT_FAILED => return Err(()),
+                winbase::WAIT_OBJECT_0 => {}
+                _ => {}
+            }
         }
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        trace!("dropping");
         unsafe { self.wintun.WintunEndSession(self.session.0) };
         self.session.0 = ptr::null_mut();
     }
