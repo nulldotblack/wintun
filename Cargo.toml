@@ -32,4 +32,4 @@ subprocess = "0.2.7"
 
 [package.metedata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
-tartegs = ["aarch64-pc-windows-msvc", "i686-pc-windows-msvc", "x86_64-pc-windows-msvc"]
+targets = ["aarch64-pc-windows-msvc", "i686-pc-windows-msvc", "x86_64-pc-windows-msvc"]
