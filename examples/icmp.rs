@@ -2,16 +2,18 @@
 use wintun;
 
 use std::fs::File;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-
 use std::{mem::MaybeUninit, ptr};
 
+use winapi::shared::ipmib;
+use winapi::um::ipexport;
 use winapi::{
     shared::{
-        ifdef, netioapi,
+        ifdef, netioapi, nldef,
         ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
         winerror, ws2def, ws2ipdef,
     },
@@ -20,7 +22,7 @@ use winapi::{
 
 use log::*;
 use packet::Builder;
-use widestring::{U16CStr, U16Str};
+use widestring::U16Str;
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
@@ -46,7 +48,28 @@ fn get_error_message(err_code: u32) -> String {
     };
 
     //SAFETY: first is a valid, non-null, aligned, pointer
-    unsafe { U16Str::from_ptr(first, chars_written as usize) }.to_string_lossy()
+    format!(
+        "{} ({})",
+        unsafe { U16Str::from_ptr(first, chars_written as usize) }.to_string_lossy(),
+        err_code
+    )
+}
+
+/// Converts a rust ip addr to a SOCKADDR_INET
+fn ip_addr_to_win_addr(addr: IpAddr) -> ws2ipdef::SOCKADDR_INET {
+    let mut result: ws2ipdef::SOCKADDR_INET = unsafe { std::mem::zeroed() };
+    match addr {
+        IpAddr::V4(v4) => {
+            *unsafe { result.si_family_mut() } = ws2def::AF_INET as u16;
+            unsafe { result.Ipv4_mut().sin_addr = std::mem::transmute(v4.octets()) };
+        }
+        IpAddr::V6(v6) => {
+            *unsafe { result.si_family_mut() } = ws2def::AF_INET6 as u16;
+            unsafe { result.Ipv6_mut().sin6_addr = std::mem::transmute(v6.segments()) };
+        }
+    }
+
+    result
 }
 
 fn main() {
@@ -60,21 +83,23 @@ fn main() {
         info!(" {} - {}", adapter.name, adapter.luid);
     }
 
-    let adapter = match wintun::Adapter::open(&wintun, "Example", "Demo") {
-        Ok(a) => {
-            info!("Opened adapter successfully");
-            a
-        },
-        Err(_) => {
-            match wintun::Adapter::create(&wintun, "Example", "Demo", None) {
-                Ok(a) => {
-                    info!("Created adapter successfully! Should reboot: {}", a.reboot_required);
-                    a.adapter
+    let adapter =
+        match wintun::Adapter::open(&wintun, "Example", "Demo") {
+            Ok(a) => {
+                info!("Opened adapter successfully");
+                a
+            }
+            Err(_) => {
+                match wintun::Adapter::create(&wintun, "Example", "Demo", None) {
+                Ok(d) => {
+                    info!("Created adapter successfully! Should reboot: {}", d.reboot_required);
+                    d.adapter
                 },
                 Err(err) => panic!("Failed to open adapter and failed to create adapter. Is process running as admin? Error: {}", err),
             }
-        }
-    };
+            }
+        };
+    let interface_address: IpAddr = "10.6.7.7".parse().unwrap();
 
     //Add an ip address to the interface
     let luid = adapter.get_luid();
@@ -84,8 +109,7 @@ fn main() {
             &mut row as *mut netioapi::MIB_UNICASTIPADDRESS_ROW,
         );
         row.InterfaceLuid = std::mem::transmute(luid);
-        row.Address.Ipv4_mut().sin_family = ws2def::AF_INET as u16;
-        row.Address.Ipv4_mut().sin_addr = std::mem::transmute(u32::from_be_bytes([10, 6, 7, 7]));
+        row.Address = ip_addr_to_win_addr(interface_address);
         row.OnLinkPrefixLength = 24;
         let result = netioapi::CreateUnicastIpAddressEntry(
             &row as *const netioapi::MIB_UNICASTIPADDRESS_ROW,
@@ -95,93 +119,62 @@ fn main() {
             return;
         }
     }
-    /*
     //Get the ip address of the default gateway so we can re-route all traffic to us, then the
     //gateway
     let gateway = unsafe {
-        let flags = iptypes::GAA_FLAG_INCLUDE_GATEWAYS
-            //| iptypes::GAA_FLAG_INCLUDE_ALL_INTERFACES
-            | iptypes::GAA_FLAG_SKIP_DNS_SERVER
-            | iptypes::GAA_FLAG_SKIP_MULTICAST;
-
-        //Get the length first
-        let mut buf_len: u32 = 0;
-        let result = iphlpapi::GetAdaptersAddresses(
-            ws2def::AF_INET as u32,
-            flags,
-            std::ptr::null_mut(),
-            ptr::null_mut(),
-            &mut buf_len as *mut u32,
-        );
-        info!("needed length: {}", buf_len);
-
-        let mut buf = Vec::with_capacity(buf_len as usize);
-        buf.resize(buf_len as usize, 0);
-        let result = iphlpapi::GetAdaptersAddresses(
-            ws2def::AF_INET as u32,
-            flags,
-            std::ptr::null_mut(),
-            buf.as_mut_ptr() as *mut iptypes::IP_ADAPTER_ADDRESSES,
-            &mut buf_len as *mut u32,
+        let mut row: ipmib::MIB_IPFORWARDROW = std::mem::zeroed();
+        let result = iphlpapi::GetBestRoute(
+            u32::from_be_bytes([1, 1, 1, 1]),
+            0,
+            &mut row as *mut ipmib::MIB_IPFORWARDROW,
         );
         if result != winerror::NO_ERROR {
-            error!(
-                "Failed to get adapter info: {}, needed size: {}",
-                get_error_message(result),
-                buf_len
-            );
+            error!("Failed to get best route: {}", get_error_message(result));
             return;
         }
-        let mut adapter = (buf.as_mut_ptr() as *mut iptypes::IP_ADAPTER_ADDRESSES)
-            .as_ref()
-            .unwrap();
-        while adapter.Next != ptr::null_mut() {
-            if adapter.OperStatus == ifdef::IfOperStatusUp {
-                info!(
-                    "Up Friendly name: {}",
-                    U16CStr::from_ptr_str(adapter.FriendlyName).to_string_lossy()
-                );
-                match adapter.FirstGatewayAddress.as_ref() {
-                    Some(mut g) => loop {
-                        let addr = g.Address;
-                        match addr.lpSockaddr.as_ref() {
-                            Some(sock_addr) => {
-                                if sock_addr.sa_family == ws2def::AF_INET as u16 {
-                                    info!("  Found ipv4 addr, {:?}", sock_addr.sa_data);
-                                    let parts: [u8; 4] = std::mem::transmute((addr.lpSockaddr as *mut ws2def::SOCKADDR_IN).as_ref().unwrap().sin_addr);
-                                    info!("  {:?}", parts);
-                                }
-                            }
-                            None => {}
-                        }
-                        if g.Next == ptr::null_mut() {
-                            break;
-                        }
-                        g = g.Next.as_ref().unwrap();
-                    },
-                    None => {}
-                }
-            }
-
-            //Unwrap is safe - we already checked that next is non null
-            adapter = adapter.Next.as_ref().unwrap();
+        trace!("Route: {:?}", row.dwForwardDest.to_ne_bytes());
+        trace!("Mask: {:?}", row.dwForwardMask.to_ne_bytes());
+        trace!("Policy: {:?}", row.dwForwardPolicy);
+        trace!("NextHop: {:?}", row.dwForwardNextHop.to_ne_bytes());
+        let gateway_bytes = row.dwForwardNextHop.to_ne_bytes();
+        if gateway_bytes == [0, 0, 0, 0] {
+            warn!("Gateway is 0.0.0.0. This may cause problems.");
+            warn!("Usually it is something like 192.168.0.1");
+            warn!("Is another VPN connection active?");
         }
+        IpAddr::V4(gateway_bytes.into())
     };
+    info!("Gateway is: {}", gateway);
 
+    let wintun_adapter_index = adapter.get_adapter_index().expect("Failed to get adapter index");
+    info!("Index is {}", wintun_adapter_index);
+
+    /*
     let mut routes = Vec::new();
-
     unsafe {
+        info!("Using luid: {}", luid);
         let mut row: netioapi::MIB_IPFORWARD_ROW2 = std::mem::zeroed();
         netioapi::InitializeIpForwardEntry(&mut row as *mut netioapi::MIB_IPFORWARD_ROW2);
+        row.ValidLifetime = 0xffffffff;
+        row.PreferredLifetime = 0xffffffff;
+        row.Protocol = nldef::MIB_IPPROTO_NETMGMT;
+        row.Metric = 0; //Highest priority
+        row.DestinationPrefix.Prefix = ip_addr_to_win_addr(interface_address);
+        row.DestinationPrefix.PrefixLength = 24;
         row.InterfaceLuid = std::mem::transmute(luid);
-        //row.NextHop.
-        let result = netioapi::CreateIpForwardEntry2(&row as *const netioapi::MIB_IPFORWARD_ROW2);
+        row.NextHop = ip_addr_to_win_addr(gateway);
+        routes.push(row);
+    }
+    for route in &routes {
+        let result = unsafe {
+            netioapi::CreateIpForwardEntry2(route as *const netioapi::MIB_IPFORWARD_ROW2)
+        };
         if result != winerror::NO_ERROR {
             error!("Failed to add route: {}", get_error_message(result));
             return;
         }
-        routes.push(row);
     }*/
+
     let file = File::create("out.pcap").unwrap();
 
     let header = pcap_file::pcap::PcapHeader {
@@ -194,13 +187,14 @@ fn main() {
         datalink: pcap_file::DataLink::RAW,
     };
     let mut writer = pcap_file::PcapWriter::with_header(header, file).unwrap();
-    let reader_session = Arc::new(
+    let main_session = Arc::new(
         adapter
             .start_session(wintun::MAX_RING_CAPACITY)
             .expect("Failed to create session"),
     );
 
-    let writer_session = reader_session.clone();
+    let reader_session = main_session.clone();
+    let writer_session = main_session.clone();
 
     let reader = std::thread::spawn(move || {
         info!("Starting reader");
@@ -233,6 +227,10 @@ fn main() {
     let writer = std::thread::spawn(move || {
         info!("Starting writer");
 
+        let v4_dest = match interface_address {
+            IpAddr::V4(v4) => v4,
+            _ => panic!("Address must be ipv4"),
+        };
         while RUNNING.load(Ordering::Relaxed) {
             let mut packet = writer_session.allocate_send_packet(28).unwrap();
             let buf = packet::buffer::Slice::new(packet.as_mut());
@@ -245,7 +243,7 @@ fn main() {
                 .unwrap()
                 .source("10.6.7.8".parse().unwrap())
                 .unwrap()
-                .destination("10.6.7.7".parse().unwrap())
+                .destination(v4_dest)
                 .unwrap()
                 .icmp()
                 .unwrap()
@@ -272,14 +270,8 @@ fn main() {
     let _ = std::io::stdin().read_line(&mut string);
     RUNNING.store(false, Ordering::Relaxed);
 
-    /*for route in routes {
-        let result = unsafe {
-            netioapi::DeleteIpForwardEntry2(&route as *const netioapi::MIB_IPFORWARD_ROW2)
-        };
-        if result != winerror::NO_ERROR {
-            warn!("Failed to delete ip route: {}", get_error_message(result));
-        }
-    }*/
+    info!("Stopping session");
+    main_session.shutdown();
 
     reader.join().unwrap();
     writer.join().unwrap();

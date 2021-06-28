@@ -1,5 +1,4 @@
 use crate::session;
-use log::*;
 
 pub(crate) enum Kind {
     SendPacketPending, //Send packet type, but not sent yet

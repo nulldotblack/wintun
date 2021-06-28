@@ -1,19 +1,33 @@
 use crate::error;
 use crate::session;
+use crate::util;
 use crate::wintun_raw;
 
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
+use itertools::Itertools;
 use log::*;
 use once_cell::sync::OnceCell;
+use rand::Rng;
+
 use widestring::U16CStr;
 use widestring::U16CString;
+
+use winapi::{
+    shared::{
+        ifdef, netioapi, nldef,
+        ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
+        winerror, ws2def, ws2ipdef,
+    },
+    um::{ipexport, iphlpapi, synchapi},
+};
 
 pub struct Adapter {
     adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
     wintun: Arc<wintun_raw::wintun>,
+    guid: u128,
 }
 
 pub struct CreateData {
@@ -93,15 +107,21 @@ impl Adapter {
         let pool_utf16 = encode_pool_name(pool)?;
         let name_utf16 = encode_adapter_name(name)?;
 
-        let guid_struct = wintun_raw::GUID {
-            __bindgen_anon_1: wintun_raw::_GUID__bindgen_ty_1 {
-                Bytes: match guid {
-                    Some(guid) => guid.to_ne_bytes(),
-                    None => [0u8; 16],
-                },
-            },
+        let guid = match guid {
+            Some(guid) => guid,
+            None => {
+                let mut guid_bytes: [u8; 16] = [0u8; 16];
+                rand::thread_rng().fill(&mut guid_bytes);
+                u128::from_ne_bytes(guid_bytes)
+            }
         };
-        let guid_ptr = guid.map_or(ptr::null(), |_| &guid_struct as *const wintun_raw::GUID);
+        //SAFETY: guid is a unique integer so transmuting either all zeroes or the user's preferred
+        //guid to the winapi guid type is safe and will allow the windows kernel to see our GUID
+        let guid_struct: wintun_raw::GUID = unsafe { std::mem::transmute(guid) };
+
+        //We can't simply get the address of guid in the closure because it needs to live for at least as
+        //long as the call to WintunCreateAdapter so do need all these variables and lines of code
+        let guid_ptr = &guid_struct as *const wintun_raw::GUID;
 
         let mut reboot_required = 0u8;
 
@@ -126,6 +146,7 @@ impl Adapter {
                 adapter: Adapter {
                     adapter: result,
                     wintun: wintun.clone(),
+                    guid,
                 },
                 reboot_required: reboot_required != 0,
             })
@@ -152,6 +173,7 @@ impl Adapter {
             Ok(Adapter {
                 adapter: result,
                 wintun: wintun.clone(),
+                guid: todo!(),
             })
         }
     }
@@ -237,6 +259,16 @@ impl Adapter {
                 session: session::UnsafeHandle(result),
                 wintun: self.wintun.clone(),
                 read_event: OnceCell::new(),
+                shutdown_event: unsafe {
+                    //SAFETY: We follow the contract required by CreateEventA. See MSDN
+                    //(the pointers are allowed to be null, and 0 is okay for the others)
+                    session::UnsafeHandle(synchapi::CreateEventA(
+                        std::ptr::null_mut(),
+                        0,
+                        0,
+                        std::ptr::null_mut(),
+                    ))
+                },
             })
         }
     }
@@ -247,6 +279,73 @@ impl Adapter {
 
     pub fn get_adapter_name(&self) -> String {
         get_adapter_name(&self.wintun, self.adapter)
+    }
+
+    pub fn get_adapter_index(&self) -> Result<u32, error::WintunError> {
+        let mut buf_len: u32 = 0;
+        let result =
+            unsafe { iphlpapi::GetInterfaceInfo(std::ptr::null_mut(), &mut buf_len as *mut u32) };
+        if result != winerror::NO_ERROR && result != winerror::ERROR_INSUFFICIENT_BUFFER {
+            let err_msg = util::get_error_message(result);
+            error!("Failed to get interface info: {}", err_msg);
+            return Err(format!("GetInterfaceInfo failed: {}", err_msg).into());
+        }
+        let mut buf: Vec<u8> = Vec::with_capacity(buf_len as usize);
+        buf.resize(buf_len as usize, 0);
+        let mut final_buf_len: u32 = buf_len;
+        let result = unsafe {
+            iphlpapi::GetInterfaceInfo(
+                buf.as_mut_ptr() as *mut ipexport::IP_INTERFACE_INFO,
+                &mut final_buf_len as *mut u32,
+            )
+        };
+        if result != winerror::NO_ERROR {
+            let err_msg = util::get_error_message(result);
+            error!(
+                "Failed to get interface info a second time: {}. Original len: {}, final len: {}",
+                err_msg, buf_len, final_buf_len
+            );
+            return Err(format!("GetInterfaceInfo failed a second time: {}", err_msg).into());
+        }
+        let info = buf.as_mut_ptr() as *const ipexport::IP_INTERFACE_INFO;
+        let adapter_base = unsafe { &*info };
+        let adapter_count = adapter_base.NumAdapters;
+        info!("Got {} adapters", adapter_count);
+        let first_adapter = &adapter_base.Adapter as *const ipexport::IP_ADAPTER_INDEX_MAP;
+
+        let interfaces =
+            unsafe { std::slice::from_raw_parts(first_adapter, adapter_count as usize) };
+
+        for interface in interfaces {
+            let name =
+                unsafe { U16CStr::from_ptr_str(&interface.Name as *const u16).to_string_lossy() };
+            let open = name.chars().position(|c| c == '{');
+            let close = name.chars().position(|c| c == '}');
+            let digits: Vec<u8> = name[open.unwrap()..close.unwrap()]
+                .chars()
+                .filter(|c| c.is_digit(16))
+                .chunks(2)
+                .into_iter()
+                .map(|mut chunk| {
+                    let a = chunk.next().unwrap();
+                    let b = chunk.next().unwrap();
+                    let chars: [u8; 2] = [a as u8, b as u8];
+                    let s = std::str::from_utf8(&chars).unwrap();
+                    u8::from_str_radix(s, 16).unwrap()
+                })
+                .collect();
+
+            let mut match_count = 0;
+            for byte in self.guid.to_ne_bytes() {
+                if digits.contains(&byte) {
+                    match_count += 1;
+                }
+            }
+            if match_count == digits.len() {
+                return Ok(interface.Index);
+            }
+        }
+        Err("Unable to find matching GUID".into())
     }
 }
 

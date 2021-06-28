@@ -6,9 +6,8 @@ use crate::wintun_raw;
 use once_cell::sync::OnceCell;
 
 use winapi::shared::winerror;
-use winapi::shared::winerror::ERROR_NO_MORE_ITEMS;
 use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::synchapi::WaitForSingleObject;
+use winapi::um::synchapi;
 use winapi::um::winbase;
 use winapi::um::winnt;
 
@@ -25,9 +24,19 @@ unsafe impl<T> Send for UnsafeHandle<T> {}
 unsafe impl<T> Sync for UnsafeHandle<T> {}
 
 pub struct Session {
+    /// The session handle given to us by WintunStartSession
     pub(crate) session: UnsafeHandle<wintun_raw::WINTUN_SESSION_HANDLE>,
+
+    /// Shared dll for required wintun driver functions
     pub(crate) wintun: Arc<wintun_raw::wintun>,
+
+    /// Windows event handle that is signaled by the wintun driver when data becomes available to
+    /// read
     pub(crate) read_event: OnceCell<UnsafeHandle<winnt::HANDLE>>,
+
+    /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
+    /// readers to exit
+    pub(crate) shutdown_event: UnsafeHandle<winnt::HANDLE>,
 }
 
 impl Session {
@@ -74,7 +83,7 @@ impl Session {
         if ptr == ptr::null_mut() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
             let last_error = unsafe { GetLastError() };
-            if last_error == ERROR_NO_MORE_ITEMS {
+            if last_error == winerror::ERROR_NO_MORE_ITEMS {
                 Ok(None)
             } else {
                 Err(())
@@ -109,14 +118,36 @@ impl Session {
                     Ok(None) => {}
                 }
             }
-            let result =
-                unsafe { WaitForSingleObject(self.get_read_wait_event()?, winbase::INFINITE) };
+            //Wait on both the read handle and the shutdown handle so that we stop when requested
+            let handles = [self.get_read_wait_event()?, self.shutdown_event.0];
+            let result = unsafe {
+                //SAFETY: We abide by the requirements of WaitForMultipleObjects, handles is a
+                //pointer to valid, aligned, stack memory
+                synchapi::WaitForMultipleObjects(
+                    2,
+                    &handles as *const winnt::HANDLE,
+                    0,
+                    winbase::INFINITE,
+                )
+            };
             match result {
                 winbase::WAIT_FAILED => return Err(()),
-                winbase::WAIT_OBJECT_0 => {}
-                _ => {}
+                _ => {
+                    if result == winbase::WAIT_OBJECT_0 {
+                        //We have data!
+                        continue;
+                    } else if result == winbase::WAIT_OBJECT_0 + 1 {
+                        //Shutdown event triggered
+                        return Err(());
+                    }
+                }
             }
         }
+    }
+
+    /// Cancels any active calls to [`receive_blocking`] making them instantly return Err(_) so that session can be stopped cleanly
+    pub fn shutdown(&self) {
+        unsafe { synchapi::SetEvent(self.shutdown_event.0) };
     }
 }
 
