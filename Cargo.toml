@@ -1,6 +1,6 @@
 [package]
 name = "wintun"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 authors = ["null.black Inc. <opensource@null.black>", "Troy Neubauer <troy@null.black>"]
 repository = "https://github.com/nulldotblack/wintun"
@@ -29,3 +29,7 @@ packet = "0.1.4"
 pcap-file = "1.1.1"
 subprocess = "0.2.7"
 
+
+[package.metedata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+tartegs = ["aarch64-pc-windows-msvc", "i686-pc-windows-msvc", "x86_64-pc-windows-msvc"]
