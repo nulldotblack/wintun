@@ -6,6 +6,7 @@ pub(crate) enum Kind {
     ReceivePacket,
 }
 
+/// Represents a wintun packet
 pub struct Packet<'a> {
     pub(crate) kind: Kind,
     pub(crate) bytes: &'a mut [u8],

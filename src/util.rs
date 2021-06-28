@@ -1,15 +1,17 @@
+use crate::wintun_raw;
+
 use winapi::{
-    shared::{
-        ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
-        winerror, ws2def, ws2ipdef,
-    },
-    um::{errhandlingapi, iphlpapi, iptypes, winbase, winnt::MAKELANGID},
+    shared::ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
+    um::{winbase, winnt::MAKELANGID},
 };
 
 use std::mem::MaybeUninit;
 use std::ptr;
+use std::sync::Arc;
+
 use widestring::U16Str;
 
+/// Returns a a human readable error message from a windows error code
 pub fn get_error_message(err_code: u32) -> String {
     const LEN: usize = 256;
     let mut buf = MaybeUninit::<[u16; LEN]>::uninit();
@@ -37,4 +39,10 @@ pub fn get_error_message(err_code: u32) -> String {
         unsafe { U16Str::from_ptr(first, chars_written as usize) }.to_string_lossy(),
         err_code
     )
+}
+
+/// Returns the major and minor version of the wintun driver
+pub fn get_running_driver_version(wintun: &Arc<wintun_raw::wintun>) -> (u16, u16) {
+    let version = unsafe { wintun.WintunGetRunningDriverVersion() };
+    (((version >> 16) & 0xFF) as u16, (version & 0xFF) as u16)
 }

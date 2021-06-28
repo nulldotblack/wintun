@@ -2,12 +2,14 @@ use std::fmt::Display;
 
 pub type WintunError = Box<dyn std::error::Error>;
 
+/// Error type used to convey that a value is outside of a range that it must fall inside
 #[derive(Debug)]
 pub struct OutOfRangeData<T> {
-    pub(crate) range: std::ops::RangeInclusive<T>,
-    pub(crate) value: T,
+    pub range: std::ops::RangeInclusive<T>,
+    pub value: T,
 }
 
+/// Error type returned when preconditions of this API are broken
 #[derive(Debug)]
 pub enum ApiError {
     CapacityNotPowerOfTwo(u32),

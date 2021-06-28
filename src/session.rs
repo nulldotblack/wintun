@@ -8,10 +8,9 @@ use once_cell::sync::OnceCell;
 use winapi::shared::winerror;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::synchapi;
+use winapi::um::handleapi;
 use winapi::um::winbase;
 use winapi::um::winnt;
-
-use log::*;
 
 use std::sync::Arc;
 use std::{ptr, slice};
@@ -23,6 +22,7 @@ pub(crate) struct UnsafeHandle<T>(pub T);
 unsafe impl<T> Send for UnsafeHandle<T> {}
 unsafe impl<T> Sync for UnsafeHandle<T> {}
 
+/// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_session_handle>
 pub struct Session {
     /// The session handle given to us by WintunStartSession
     pub(crate) session: UnsafeHandle<wintun_raw::WINTUN_SESSION_HANDLE>,
@@ -40,6 +40,13 @@ pub struct Session {
 }
 
 impl Session {
+    /// Allocates a send packet of the specified size. Wraps WintunAllocateSendPacket
+    ///
+    /// All packets returned from this function must be sent using [`Session::send_packet`] because
+    /// wintun establishes the send packet order based on the invocation order of this function.
+    /// Therefore if a packet is allocated using this function, and then never sent, it will hold
+    /// up the send queue for all other packets allocated in the future. It is okay for the session
+    /// to shutdown with allocated packets that have not yet been sent
     pub fn allocate_send_packet<'a>(&'a self, size: u16) -> Result<packet::Packet, ()> {
         let ptr = unsafe {
             self.wintun
@@ -58,6 +65,7 @@ impl Session {
         }
     }
 
+    /// Sends a packet previously allocated with [`Session::allocate_send_packet`]
     pub fn send_packet(&self, mut packet: packet::Packet) {
         assert!(matches!(packet.kind, packet::Kind::SendPacketPending));
 
@@ -69,8 +77,9 @@ impl Session {
         packet.kind = packet::Kind::SendPacketSent;
     }
 
-    /// Attempts to receive a packet from the virtual interface.
-    /// If there are no queued packets to receive then this function returns Ok(None)
+    /// Attempts to receive a packet from the virtual interface without blocking.
+    /// If there are no packets currently in the receive queue, this function returns Ok(None)
+    /// without blocking. If blocking until a packet is desirable, use [`Session::receive_blocking`]
     pub fn try_receive<'a>(&'a self) -> Result<Option<packet::Packet>, ()> {
         let mut size = 0u32;
 
@@ -99,7 +108,9 @@ impl Session {
         }
     }
 
-    pub fn get_read_wait_event(&self) -> Result<winnt::HANDLE, ()> {
+    /// Returns the low level read event handle that is signaled when more data becomes available
+    /// to read
+    pub(crate) fn get_read_wait_event(&self) -> Result<winnt::HANDLE, ()> {
         Ok(self
             .read_event
             .get_or_init(|| unsafe {
@@ -108,14 +119,21 @@ impl Session {
             .0)
     }
 
+    /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
+    /// If the session is closed via [`Session::shutdown`] all threads currently blocking inside this function
+    /// will return Err(())
     pub fn receive_blocking<'a>(&'a self) -> Result<packet::Packet, ()> {
         loop {
-            //Try 5 times to receive without blocking
+            //Try 5 times to receive without blocking so we don't have to issue a syscall to wait
+            //for the event if packets are being received at a rapid rate
             for _ in 0..5 {
                 match self.try_receive() {
                     Err(err) => return Err(err),
                     Ok(Some(packet)) => return Ok(packet),
-                    Ok(None) => {}
+                    Ok(None) => {
+                        //Try again
+                        continue;
+                    }
                 }
             }
             //Wait on both the read handle and the shutdown handle so that we stop when requested
@@ -145,9 +163,10 @@ impl Session {
         }
     }
 
-    /// Cancels any active calls to [`receive_blocking`] making them instantly return Err(_) so that session can be stopped cleanly
+    /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
     pub fn shutdown(&self) {
-        unsafe { synchapi::SetEvent(self.shutdown_event.0) };
+        let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
+        let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
     }
 }
 

@@ -1,8 +1,11 @@
-/// Semi port of WinTun's c example: https://git.zx2c4.com/wintun/tree/example/example.c
+//! Creates a wintun adapter, setups routes so that the adapter gets packets from the system, and
+//! writes all routed packets to a pcap file for analysis in Wireshark
+//! Must be run as Administrator
+
 use wintun;
 
 use std::fs::File;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -10,18 +13,18 @@ use std::sync::{
 use std::{mem::MaybeUninit, ptr};
 
 use winapi::shared::ipmib;
-use winapi::um::ipexport;
 use winapi::{
     shared::{
-        ifdef, netioapi, nldef,
         ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
         winerror, ws2def, ws2ipdef,
     },
-    um::{errhandlingapi, iphlpapi, iptypes, winbase, winnt::MAKELANGID},
+    um::{iphlpapi, winbase, winnt::MAKELANGID},
 };
 
 use log::*;
 use packet::Builder;
+use std::time::{SystemTime, UNIX_EPOCH};
+use subprocess::{Popen, PopenConfig, Redirection};
 use widestring::U16Str;
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
@@ -56,7 +59,7 @@ fn get_error_message(err_code: u32) -> String {
 }
 
 /// Converts a rust ip addr to a SOCKADDR_INET
-fn ip_addr_to_win_addr(addr: IpAddr) -> ws2ipdef::SOCKADDR_INET {
+fn _ip_addr_to_win_addr(addr: IpAddr) -> ws2ipdef::SOCKADDR_INET {
     let mut result: ws2ipdef::SOCKADDR_INET = unsafe { std::mem::zeroed() };
     match addr {
         IpAddr::V4(v4) => {
@@ -72,13 +75,39 @@ fn ip_addr_to_win_addr(addr: IpAddr) -> ws2ipdef::SOCKADDR_INET {
     result
 }
 
+pub enum RouteCmdKind {
+    Add,
+    Set,
+}
+
+pub struct RouteCmd {
+    pub kind: RouteCmdKind,
+    pub cmd: String,
+}
+
+impl RouteCmd {
+    pub fn add(cmd: String) -> Self {
+        Self {
+            kind: RouteCmdKind::Add,
+            cmd,
+        }
+    }
+
+    pub fn set(cmd: String) -> Self {
+        Self {
+            kind: RouteCmdKind::Set,
+            cmd,
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
 
     let wintun = wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll")
         .expect("Failed to load wintun dll");
 
-    info!("Listing adapters");
+    info!("Listing wireguard adapters");
     for adapter in wintun::Adapter::list_all(&wintun, "Wireguard").unwrap() {
         info!(" {} - {}", adapter.name, adapter.luid);
     }
@@ -99,26 +128,14 @@ fn main() {
             }
             }
         };
-    let interface_address: IpAddr = "10.6.7.7".parse().unwrap();
 
-    //Add an ip address to the interface
-    let luid = adapter.get_luid();
-    unsafe {
-        let mut row: netioapi::MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
-        netioapi::InitializeUnicastIpAddressEntry(
-            &mut row as *mut netioapi::MIB_UNICASTIPADDRESS_ROW,
-        );
-        row.InterfaceLuid = std::mem::transmute(luid);
-        row.Address = ip_addr_to_win_addr(interface_address);
-        row.OnLinkPrefixLength = 24;
-        let result = netioapi::CreateUnicastIpAddressEntry(
-            &row as *const netioapi::MIB_UNICASTIPADDRESS_ROW,
-        );
-        if result != winerror::NO_ERROR && result != winerror::ERROR_OBJECT_ALREADY_EXISTS {
-            error!("Failed to set ip address: {}", get_error_message(result));
-            return;
-        }
-    }
+    //Give wintun interface ip and gateway
+    let interface_address: IpAddr = "10.8.0.2".parse().unwrap();
+    let interface_gateway: IpAddr = "10.8.0.1".parse().unwrap();
+    let interface_prefix_length = 24;
+
+    let dns_server = "1.1.1.1";
+
     //Get the ip address of the default gateway so we can re-route all traffic to us, then the
     //gateway
     let gateway = unsafe {
@@ -146,34 +163,74 @@ fn main() {
     };
     info!("Gateway is: {}", gateway);
 
-    let wintun_adapter_index = adapter.get_adapter_index().expect("Failed to get adapter index");
+    let wintun_adapter_index = adapter
+        .get_adapter_index()
+        .expect("Failed to get adapter index");
     info!("Index is {}", wintun_adapter_index);
 
-    /*
-    let mut routes = Vec::new();
-    unsafe {
-        info!("Using luid: {}", luid);
-        let mut row: netioapi::MIB_IPFORWARD_ROW2 = std::mem::zeroed();
-        netioapi::InitializeIpForwardEntry(&mut row as *mut netioapi::MIB_IPFORWARD_ROW2);
-        row.ValidLifetime = 0xffffffff;
-        row.PreferredLifetime = 0xffffffff;
-        row.Protocol = nldef::MIB_IPPROTO_NETMGMT;
-        row.Metric = 0; //Highest priority
-        row.DestinationPrefix.Prefix = ip_addr_to_win_addr(interface_address);
-        row.DestinationPrefix.PrefixLength = 24;
-        row.InterfaceLuid = std::mem::transmute(luid);
-        row.NextHop = ip_addr_to_win_addr(gateway);
-        routes.push(row);
-    }
+    let mut routes: Vec<RouteCmd> = Vec::new();
+    routes.push(RouteCmd::set(format!(
+        "interface {} metric=1",
+        wintun_adapter_index
+    )));
+    routes.push(RouteCmd::set(format!(
+        "address {} static {}/{} gateway={} store=active",
+        wintun_adapter_index, interface_address, interface_prefix_length, interface_gateway
+    )));
+
+    routes.push(RouteCmd::add(format!(
+        "route 0.0.0.0/1 {} {} store=active",
+        wintun_adapter_index, interface_gateway
+    )));
+
+    routes.push(RouteCmd::add(format!(
+        "route 128.0.0.0/1 {} {} store=active",
+        wintun_adapter_index, interface_gateway
+    )));
+
+    routes.push(RouteCmd::set(format!(
+        "dnsservers {} static {} register=primary validate=no",
+        wintun_adapter_index, dns_server
+    )));
+
+    //Execute route commands so that the system routes packets to us
     for route in &routes {
-        let result = unsafe {
-            netioapi::CreateIpForwardEntry2(route as *const netioapi::MIB_IPFORWARD_ROW2)
-        };
-        if result != winerror::NO_ERROR {
-            error!("Failed to add route: {}", get_error_message(result));
+        let mut args: Vec<String> = Vec::new();
+        args.push("netsh".to_owned());
+        args.push("interface".to_owned());
+        args.push("ip".to_owned());
+        args.push(
+            match route.kind {
+                RouteCmdKind::Add => "add",
+                RouteCmdKind::Set => "set",
+            }
+            .to_owned(),
+        );
+        args.extend(route.cmd.split(' ').map(|arg| arg.to_owned()));
+        info!("Running {:?}", &args);
+        let mut result = Popen::create(
+            args.as_slice(),
+            PopenConfig {
+                stdout: Redirection::Pipe,
+                stderr: Redirection::Merge,
+                ..Default::default()
+            },
+        )
+        .expect("Failed to run cmd");
+
+        let raw_output = result
+            .communicate(None)
+            .expect("Failed to get output from process")
+            .0
+            .unwrap();
+
+        let output = raw_output.trim();
+        let status = result.wait().expect("Failed to get process exit status");
+        if !status.success() || (!output.is_empty() && output != "Ok.") {
+            error!("Running process: {:?} failed! Output: {}", args, output);
             return;
         }
-    }*/
+    }
 
     let file = File::create("out.pcap").unwrap();
 
@@ -197,25 +254,24 @@ fn main() {
     let writer_session = main_session.clone();
 
     let reader = std::thread::spawn(move || {
+        let mut packet_count = 0;
         info!("Starting reader");
         while RUNNING.load(Ordering::Relaxed) {
             match reader_session.receive_blocking() {
                 Ok(mut packet) => {
+                    packet_count += 1;
                     let bytes = packet.bytes_mut();
-                    writer.write(1, 0, bytes, bytes.len() as u32).unwrap();
-                    if bytes.len() < 20 {
-                        info!("Got packet without room for an ip header: {:?}", bytes);
-                    } else {
-                        info!("Read {} bytes", bytes.len());
-                        let ipv4 = match packet::ip::v4::Packet::new(bytes) {
-                            Ok(p) => p,
-                            Err(err) => {
-                                warn!("Got bad packet: {}", err);
-                                continue;
-                            }
-                        };
-                        info!("got packet: {:?}", ipv4);
-                    }
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    writer
+                        .write(
+                            now.as_secs() as u32,
+                            now.subsec_nanos(),
+                            bytes,
+                            bytes.len() as u32,
+                        )
+                        .unwrap();
                 }
                 Err(err) => {
                     error!("Got error while reading: {:?}", err);
@@ -223,6 +279,7 @@ fn main() {
                 }
             }
         }
+        packet_count
     });
     let writer = std::thread::spawn(move || {
         info!("Starting writer");
@@ -235,7 +292,8 @@ fn main() {
             let mut packet = writer_session.allocate_send_packet(28).unwrap();
             let buf = packet::buffer::Slice::new(packet.as_mut());
 
-            let ipv4 = packet::ip::v4::Builder::with(buf)
+            //Send random ICMP request
+            let _ = packet::ip::v4::Builder::with(buf)
                 .unwrap()
                 .id(0x2d87)
                 .unwrap()
@@ -258,12 +316,12 @@ fn main() {
                 .build()
                 .unwrap();
 
-            info!("Sent {} bytes", ipv4.len());
             writer_session.send_packet(packet);
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     });
 
+    std::thread::sleep(std::time::Duration::from_secs(1));
     println!("Press enter to stop example");
 
     let mut string = String::new();
@@ -273,10 +331,48 @@ fn main() {
     info!("Stopping session");
     main_session.shutdown();
 
-    reader.join().unwrap();
+    let packets_captured = reader.join().unwrap();
     writer.join().unwrap();
 
     info!("Finished session successfully!");
 
+    for route in &routes {
+        match route.kind {
+            RouteCmdKind::Add => {
+                let mut args: Vec<String> = Vec::new();
+                args.push("netsh".to_owned());
+                args.push("interface".to_owned());
+                args.push("ip".to_owned());
+                args.push("delete".to_owned());
+
+                args.extend(route.cmd.split(' ').map(|arg| arg.to_owned()));
+                info!("Running {:?}", &args);
+                let mut result = Popen::create(
+                    args.as_slice(),
+                    PopenConfig {
+                        stdout: Redirection::Pipe,
+                        stderr: Redirection::Merge,
+                        ..Default::default()
+                    },
+                )
+                .expect("Failed to run cmd");
+
+                let raw_output = result
+                    .communicate(None)
+                    .expect("Failed to get output from process")
+                    .0
+                    .unwrap();
+
+                let output = raw_output.trim();
+                let status = result.wait().expect("Failed to get process exit status");
+                if !status.success() || (!output.is_empty() && output != "Ok.") {
+                    warn!("Running process: {:?} failed! Output: {}", args, output);
+                }
+            }
+            RouteCmdKind::Set => {}
+        }
+    }
+
     adapter.delete(false).unwrap();
+    info!("Saved {} captured packets to out.pcap", packets_captured);
 }

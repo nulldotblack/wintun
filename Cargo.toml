@@ -14,11 +14,13 @@ log = "0.4"
 rand = "0.8.3"
 itertools = "0.10.1"
 
-winapi = { version = "0.3", features = ["synchapi", "winbase", "winerror"] }
+winapi = { version = "0.3", features = ["synchapi", "winbase", "winerror", "ipexport", "iphlpapi", "handleapi"] }
+
 
 [dev-dependencies]
 env_logger = "0.8"
-winapi = { version = "0.3", features = ["synchapi", "winbase", "winerror", "netioapi", "iptypes", "iphlpapi", "nldef"] }
+winapi = { version = "0.3", features = ["netioapi", "iptypes", "iphlpapi", "nldef"] }
 packet = "0.1.4"
 pcap-file = "1.1.1"
+subprocess = "0.2.7"
 
