@@ -7,7 +7,7 @@ repository = "https://github.com/nulldotblack/wintun"
 readme = "README.md"
 documentation = "https://docs.rs/wintun/"
 description = "Safe idiomatic bindings to the WinTun C library"
-license = "MIT OR GPLv2"
+license = "MIT"
 keywords = ["wintun", "tap", "tun", "vpn", "wireguard"]
 
 [dependencies]
