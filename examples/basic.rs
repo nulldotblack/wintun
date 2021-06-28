@@ -5,21 +5,18 @@ use std::sync::{
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
 fn main() {
-    //Load the wintun dll file so that we can call the underlying C functions
-    let wintun = wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll")
+    let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
         .expect("Failed to load wintun dll");
-    //Try to load an adapter from the given pool with the name "Demo"
+
     let adapter = match wintun::Adapter::open(&wintun, "Example", "Demo") {
         Ok(a) => a,
-        Err(_) =>
-        //If loading failed (most likely it didn't exist), create a new one
-        {
+        Err(_) => {
             wintun::Adapter::create(&wintun, "Example", "Demo", None)
                 .expect("Failed to create wintun adapter!")
                 .adapter
         }
     };
-    //Specify the size of the ring buffer the wintun driver should use.
+
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
 
     let reader_session = session.clone();
