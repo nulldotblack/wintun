@@ -2,6 +2,7 @@ extern crate winapi;
 
 use crate::packet;
 use crate::wintun_raw;
+use crate::util::UnsafeHandle;
 
 use once_cell::sync::OnceCell;
 
@@ -14,13 +15,6 @@ use winapi::um::winnt;
 
 use std::sync::Arc;
 use std::{ptr, slice};
-
-pub(crate) struct UnsafeHandle<T>(pub T);
-
-/// We never read from the pointer. It only serves as a handle we pass to the kernel or C code that
-/// doesn't have the same mutable aliasing restrictions we have in Rust
-unsafe impl<T> Send for UnsafeHandle<T> {}
-unsafe impl<T> Sync for UnsafeHandle<T> {}
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_session_handle>
 pub struct Session {
@@ -47,7 +41,7 @@ impl Session {
     /// Therefore if a packet is allocated using this function, and then never sent, it will hold
     /// up the send queue for all other packets allocated in the future. It is okay for the session
     /// to shutdown with allocated packets that have not yet been sent
-    pub fn allocate_send_packet<'a>(&'a self, size: u16) -> Result<packet::Packet, ()> {
+    pub fn allocate_send_packet(self: Arc<Self>, size: u16) -> Result<packet::Packet, ()> {
         let ptr = unsafe {
             self.wintun
                 .WintunAllocateSendPacket(self.session.0, size as u32)
@@ -59,7 +53,7 @@ impl Session {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
                 //must be less than isize::MAX because bytes is a u16
                 bytes: unsafe { slice::from_raw_parts_mut(ptr, size as usize) },
-                session: self,
+                session: self.clone(),
                 kind: packet::Kind::SendPacketPending,
             })
         }
@@ -80,7 +74,7 @@ impl Session {
     /// Attempts to receive a packet from the virtual interface without blocking.
     /// If there are no packets currently in the receive queue, this function returns Ok(None)
     /// without blocking. If blocking until a packet is desirable, use [`Session::receive_blocking`]
-    pub fn try_receive<'a>(&'a self) -> Result<Option<packet::Packet>, ()> {
+    pub fn try_receive(self: &Arc<Self>) -> Result<Option<packet::Packet>, ()> {
         let mut size = 0u32;
 
         let ptr = unsafe {
@@ -103,7 +97,7 @@ impl Session {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
                 //must be less than isize::MAX because bytes is a u16
                 bytes: unsafe { slice::from_raw_parts_mut(ptr, size as usize) },
-                session: self,
+                session: self.clone(),
             }))
         }
     }
@@ -122,7 +116,7 @@ impl Session {
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
     /// If the session is closed via [`Session::shutdown`] all threads currently blocking inside this function
     /// will return Err(())
-    pub fn receive_blocking<'a>(&'a self) -> Result<packet::Packet, ()> {
+    pub fn receive_blocking(self: &Arc<Self>) -> Result<packet::Packet, ()> {
         loop {
             //Try 5 times to receive without blocking so we don't have to issue a syscall to wait
             //for the event if packets are being received at a rapid rate

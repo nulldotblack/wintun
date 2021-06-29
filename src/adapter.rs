@@ -6,6 +6,7 @@
 use crate::error;
 use crate::session;
 use crate::util;
+use crate::util::UnsafeHandle;
 use crate::wintun_raw;
 
 use std::mem::MaybeUninit;
@@ -27,7 +28,7 @@ use winapi::{
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
 pub struct Adapter {
-    adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
+    adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
     wintun: Arc<wintun_raw::wintun>,
     guid: u128,
 }
@@ -155,7 +156,7 @@ impl Adapter {
         } else {
             Ok(CreateData {
                 adapter: Adapter {
-                    adapter: result,
+                    adapter: UnsafeHandle(result),
                     wintun: wintun.clone(),
                     guid,
                 },
@@ -189,7 +190,7 @@ impl Adapter {
             Err("WintunOpenAdapter failed".into())
         } else {
             Ok(Adapter {
-                adapter: result,
+                adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 // TODO: get GUID somehow
                 guid: 0,
@@ -246,7 +247,7 @@ impl Adapter {
 
         let result = unsafe {
             self.wintun.WintunDeleteAdapter(
-                self.adapter,
+                self.adapter.0,
                 u8::from(force_close_sessions),
                 &mut reboot_required as *mut u8,
             )
@@ -277,19 +278,19 @@ impl Adapter {
             return Err(Box::new(error::ApiError::CapacityNotPowerOfTwo(capacity)));
         }
 
-        let result = unsafe { self.wintun.WintunStartSession(self.adapter, capacity) };
+        let result = unsafe { self.wintun.WintunStartSession(self.adapter.0, capacity) };
 
         if result == ptr::null_mut() {
             Err("WintunStartSession failed".into())
         } else {
             Ok(session::Session {
-                session: session::UnsafeHandle(result),
+                session: UnsafeHandle(result),
                 wintun: self.wintun.clone(),
                 read_event: OnceCell::new(),
                 shutdown_event: unsafe {
                     //SAFETY: We follow the contract required by CreateEventA. See MSDN
                     //(the pointers are allowed to be null, and 0 is okay for the others)
-                    session::UnsafeHandle(synchapi::CreateEventA(
+                    UnsafeHandle(synchapi::CreateEventA(
                         std::ptr::null_mut(),
                         0,
                         0,
@@ -302,13 +303,13 @@ impl Adapter {
 
     /// Returns the Win32 LUID for this adapter
     pub fn get_luid(&self) -> u64 {
-        get_adapter_luid(&self.wintun, self.adapter)
+        get_adapter_luid(&self.wintun, self.adapter.0)
     }
 
     /// Returns the name of this adapter. Set by calls to [`Adapter::create`]
     pub fn get_adapter_name(&self) -> String {
         // TODO: also expose WintunSetAdapterName
-        get_adapter_name(&self.wintun, self.adapter)
+        get_adapter_name(&self.wintun, self.adapter.0)
     }
 
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
@@ -441,7 +442,7 @@ impl Drop for Adapter {
     fn drop(&mut self) {
         //Free adapter on drop
         //This is why we need an Arc of wintun
-        unsafe { self.wintun.WintunFreeAdapter(self.adapter) };
-        self.adapter = ptr::null_mut();
+        unsafe { self.wintun.WintunFreeAdapter(self.adapter.0) };
+        self.adapter = UnsafeHandle(ptr::null_mut());
     }
 }

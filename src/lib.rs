@@ -94,6 +94,8 @@ pub use crate::wintun_raw::WINTUN_MAX_RING_CAPACITY as MAX_RING_CAPACITY;
 #[doc = "The minimum size of wintun's internal ring buffer (in bytes)"]
 pub use crate::wintun_raw::WINTUN_MIN_RING_CAPACITY as MIN_RING_CAPACITY;
 
+pub use wintun_raw::wintun as dll;
+
 use std::sync::Arc;
 
 /// Attempts to load the Wintun library from the current directory using the default name "wintun.dll".
@@ -110,7 +112,7 @@ use std::sync::Arc;
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load() -> Result<Arc<wintun_raw::wintun>, libloading::Error> {
+pub unsafe fn load() -> Result<Arc<dll>, libloading::Error> {
     load_from_path("wintun")
 }
 
@@ -126,7 +128,7 @@ pub unsafe fn load() -> Result<Arc<wintun_raw::wintun>, libloading::Error> {
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load_from_path<P>(path: P) -> Result<Arc<wintun_raw::wintun>, libloading::Error>
+pub unsafe fn load_from_path<P>(path: P) -> Result<Arc<dll>, libloading::Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
@@ -143,7 +145,7 @@ where
 /// is inherently unsafe. 
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading::Library::new`]
-pub unsafe fn load_from_library<L>(library: L) -> Result<Arc<wintun_raw::wintun>, libloading::Error>
+pub unsafe fn load_from_library<L>(library: L) -> Result<Arc<dll>, libloading::Error>
 where
     L: Into<libloading::Library>,
 {

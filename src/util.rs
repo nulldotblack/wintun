@@ -11,6 +11,14 @@ use std::sync::Arc;
 
 use widestring::U16Str;
 
+/// A wrapper struct that allows a type to be Send and Sync
+pub(crate) struct UnsafeHandle<T>(pub T);
+
+/// We never read from the pointer. It only serves as a handle we pass to the kernel or C code that
+/// doesn't have the same mutable aliasing restrictions we have in Rust
+unsafe impl<T> Send for UnsafeHandle<T> {}
+unsafe impl<T> Sync for UnsafeHandle<T> {}
+
 /// Returns a a human readable error message from a windows error code
 pub fn get_error_message(err_code: u32) -> String {
     const LEN: usize = 256;
