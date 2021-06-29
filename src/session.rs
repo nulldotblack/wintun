@@ -41,7 +41,7 @@ impl Session {
     /// Therefore if a packet is allocated using this function, and then never sent, it will hold
     /// up the send queue for all other packets allocated in the future. It is okay for the session
     /// to shutdown with allocated packets that have not yet been sent
-    pub fn allocate_send_packet(self: Arc<Self>, size: u16) -> Result<packet::Packet, ()> {
+    pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, ()> {
         let ptr = unsafe {
             self.wintun
                 .WintunAllocateSendPacket(self.session.0, size as u32)
