@@ -19,6 +19,8 @@
 //!
 //! # Example
 //! ```no_run
+//! use std::sync::Arc;
+//!
 //! //Must be run as Administrator because we create network adapters
 //! fn main() {
 //!     //Load the wintun dll file so that we can call the underlying C functions
@@ -32,11 +34,11 @@
 //!             wintun::Adapter::create(&wintun, "Example", "Demo", None).expect("Failed to create wintun adapter!").adapter,
 //!     };
 //!     //Specify the size of the ring buffer the wintun driver should use.
-//!     let session = adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap();
+//!     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
 //!
 //!     //Get a 20 byte packet from the ring buffer
 //!     let mut packet = session.allocate_send_packet(20).unwrap();
-//!     let bytes: &mut [u8] = packet.as_mut();
+//!     let bytes: &mut [u8] = packet.bytes_mut();
 //!     //Write IPV4 version and header length
 //!     bytes[0] = 0x40;
 //!

@@ -290,7 +290,7 @@ fn main() {
         };
         while RUNNING.load(Ordering::Relaxed) {
             let mut packet = writer_session.allocate_send_packet(28).unwrap();
-            let buf = packet::buffer::Slice::new(packet.as_mut());
+            let buf = packet::buffer::Slice::new(packet.bytes_mut());
 
             //Send random ICMP request
             let _ = packet::ip::v4::Builder::with(buf)

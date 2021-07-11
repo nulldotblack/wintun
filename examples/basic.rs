@@ -24,11 +24,11 @@ fn main() {
         while RUNNING.load(Ordering::Relaxed) {
             match reader_session.receive_blocking() {
                 Ok(packet) => {
-                    let bytes = packet.as_ref();
+                    let bytes = packet.bytes();
                     println!(
                         "Read packet size {} bytes. Header data: {:?}",
                         bytes.len(),
-                        &bytes[0..20.min(bytes.len())]
+                        &bytes[0..(20.min(bytes.len()))]
                     );
                 }
                 Err(_) => println!("Got error while reading packet"),
