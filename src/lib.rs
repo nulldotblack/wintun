@@ -71,6 +71,12 @@
 //! See `examples/wireguard.rs` for a more complete example that writes received packets to a pcap
 //! file. 
 //!
+//! #Features
+//!
+//! - `panic_on_unsent_packets`: Panics if a send packet is dropped without being sent. Useful for
+//! debugging packet issues because unsent packets that are dropped without being sent hold up
+//! wintun's internal ring buffer. 
+//!
 
 mod adapter;
 mod error;

@@ -1,15 +1,15 @@
 extern crate winapi;
 
 use crate::packet;
-use crate::wintun_raw;
 use crate::util::UnsafeHandle;
+use crate::wintun_raw;
 
 use once_cell::sync::OnceCell;
 
 use winapi::shared::winerror;
 use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::synchapi;
 use winapi::um::handleapi;
+use winapi::um::synchapi;
 use winapi::um::winbase;
 use winapi::um::winnt;
 
@@ -161,6 +161,10 @@ impl Session {
     pub fn shutdown(&self) {
         let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
         let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
+    }
+
+    pub(crate) fn handle(&self) -> wintun_raw::WINTUN_SESSION_HANDLE {
+        self.session.0
     }
 }
 

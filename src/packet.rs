@@ -66,7 +66,7 @@ impl Drop for Packet {
                     //  1. We share ownership of the session therefore it hasn't been dropped yet
                     //  2. Bytes is valid because each packet holds exclusive access to a region of the
                     //     ring buffer that the wintun session owns. We return that region of
-                    //     memory here
+                    //     memory back to wintun here
                     self.session
                         .wintun
                         .WintunReleaseReceivePacket(self.session.session.0, self.bytes.as_ptr())
@@ -76,6 +76,8 @@ impl Drop for Packet {
                 //If someone allocates a packet with session.allocate_send_packet() and then it is
                 //dropped without being sent, this will hold up the send queue because wintun expects
                 //that every allocated packet is sent
+
+                #[cfg(feature = "panic_on_unsent_packets")]
                 panic!("Packet was never sent!");
             }
             Kind::SendPacketSent => {
