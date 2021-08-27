@@ -71,11 +71,16 @@
 //! See `examples/wireguard.rs` for a more complete example that writes received packets to a pcap
 //! file. 
 //!
-//! #Features
+//! # Features
 //!
 //! - `panic_on_unsent_packets`: Panics if a send packet is dropped without being sent. Useful for
 //! debugging packet issues because unsent packets that are dropped without being sent hold up
 //! wintun's internal ring buffer. 
+//!
+//! # TODO:
+//! - Add async support
+//! Requires hooking into a windows specific reactor and registering read interest on wintun's read
+//! handle. Asyncify other slow operations via tokio::spawn_blocking. As always, PR's are welcome!
 //!
 
 mod adapter;
