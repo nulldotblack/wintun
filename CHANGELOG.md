@@ -10,9 +10,17 @@ Added support for wintun 0.14.
 ### Breaking Changes
 
 - Wintun driver versions before `0.14` are no longer support due to beraking
-changes in che CAPI
+changes in the C API
+- `Adapter::create` returns a `Result<Adapter, ...>` instead of a `Result<CreateData, ...>`.
+This was done because the underlying Wintun function was changed to only return an adapter handle
+- `Adapter::create` the pool parameter was removed because it was also removed from the C function
+- `Adapter::delete` takes no parameters and returns a `Result<(), ()>`.
+The `force_close_sessions` parameter was removed because it was removed from the
+C function. Same for the bool inside the Ok(..) variant
+- 
+### Added
 
-### Fixed- 
+- `reset_logger` function to disable logging after a logger has been set.
 
 ## [0.1.5] - 2021-08-27
 
