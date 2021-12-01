@@ -312,6 +312,11 @@ impl Adapter {
         get_adapter_name(&self.wintun, self.adapter.0)
     }
 
+    /// Set guid for current adapter. This is a workaround.
+    pub fn set_guid(&mut self, guid:u128) {
+        self.guid = guid;
+    }
+
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, error::WintunError> {
