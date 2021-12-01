@@ -46,7 +46,7 @@ impl Session {
             self.wintun
                 .WintunAllocateSendPacket(self.session.0, size as u32)
         };
-        if ptr == ptr::null_mut() {
+        if ptr.is_null() {
             Err(())
         } else {
             Ok(packet::Packet {
@@ -83,7 +83,7 @@ impl Session {
         };
 
         debug_assert!(size <= u16::MAX as u32);
-        if ptr == ptr::null_mut() {
+        if ptr.is_null() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
             let last_error = unsafe { GetLastError() };
             if last_error == winerror::ERROR_NO_MORE_ITEMS {
@@ -161,11 +161,7 @@ impl Session {
     pub fn shutdown(&self) {
         let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
         let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
-    }
-
-    pub(crate) fn handle(&self) -> wintun_raw::WINTUN_SESSION_HANDLE {
-        self.session.0
-    }
+    } 
 }
 
 impl Drop for Session {

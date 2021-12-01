@@ -9,7 +9,6 @@ use crate::util;
 use crate::util::UnsafeHandle;
 use crate::wintun_raw;
 
-use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -33,16 +32,9 @@ pub struct Adapter {
     guid: u128,
 }
 
-/// Holds the newly created adapter and reboot suggestion from the system when a new adapter is
-/// created
-pub struct CreateData {
-    pub adapter: Adapter,
-    pub reboot_required: bool,
-}
-
-fn encode_utf16(string: &str, max_characters: u32) -> Result<U16CString, error::WintunError> {
+fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, error::WintunError> {
     let utf16 = U16CString::from_str(string)?;
-    if utf16.len() >= max_characters as usize {
+    if utf16.len() >= max_characters {
         //max_characters is the maximum number of characters including the null terminator. And .len() measures the
         //number of characters (excluding the null terminator). Therefore we can hold a string with
         //max_characters - 1 because the null terminator sits in the last element. However a string
@@ -61,43 +53,20 @@ fn encode_utf16(string: &str, max_characters: u32) -> Result<U16CString, error::
 }
 
 fn encode_pool_name(name: &str) -> Result<U16CString, error::WintunError> {
-    encode_utf16(name, wintun_raw::WINTUN_MAX_POOL)
+    encode_utf16(name, crate::MAX_POOL)
 }
 
 fn encode_adapter_name(name: &str) -> Result<U16CString, error::WintunError> {
-    encode_utf16(name, wintun_raw::MAX_ADAPTER_NAME)
-}
-
-fn get_adapter_name(
-    wintun: &Arc<wintun_raw::wintun>,
-    adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
-) -> String {
-    let mut name = MaybeUninit::<[u16; wintun_raw::MAX_ADAPTER_NAME as usize]>::uninit();
-
-    //SAFETY: name is a allocated on the stack above therefore it must be valid, non-null and
-    //aligned for u16
-    let first = unsafe { *name.as_mut_ptr() }.as_mut_ptr();
-    //Write default null terminator in case WintunGetAdapterName leaves name unchanged
-    unsafe { first.write(0u16) };
-    unsafe { wintun.WintunGetAdapterName(adapter, first) };
-
-    //SAFETY: first is a valid, non-null, aligned, null terminated pointer
-    unsafe { U16CStr::from_ptr_str(first) }.to_string_lossy()
+    encode_utf16(name, crate::MAX_POOL)
 }
 
 fn get_adapter_luid(
     wintun: &Arc<wintun_raw::wintun>,
     adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
 ) -> u64 {
-    let mut luid = 0u64;
-    unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut u64) };
-    luid
-}
-
-/// Contains information about a single existing adapter
-pub struct EnumeratedAdapter {
-    pub name: String,
-    pub luid: wintun_raw::NET_LUID,
+    let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
+    unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
+    unsafe { std::mem::transmute(luid) }
 }
 
 impl Adapter {
@@ -113,7 +82,7 @@ impl Adapter {
         pool: &str,
         name: &str,
         guid: Option<u128>,
-    ) -> Result<CreateData, error::WintunError> {
+    ) -> Result<Adapter, error::WintunError> {
         let pool_utf16 = encode_pool_name(pool)?;
         let name_utf16 = encode_adapter_name(name)?;
 
@@ -135,37 +104,28 @@ impl Adapter {
 
         let guid_ptr = &guid_struct as *const wintun_raw::GUID;
 
-        let mut reboot_required = 0u8;
-
-        crate::log::set_default_logger_if_unset(&wintun);
+        crate::log::set_default_logger_if_unset(wintun);
 
         //SAFETY: the function is loaded from the wintun dll properly, we are providing valid
         //pointers, and all the strings are correct null terminated UTF-16. This safety rationale
         //applies for all Wintun* functions below
         let result = unsafe {
-            wintun.WintunCreateAdapter(
-                pool_utf16.as_ptr(),
-                name_utf16.as_ptr(),
-                guid_ptr,
-                &mut reboot_required as *mut u8,
-            )
+            wintun.WintunCreateAdapter(pool_utf16.as_ptr(), name_utf16.as_ptr(), guid_ptr)
         };
 
-        if result == ptr::null_mut() {
+        if result.is_null() {
             Err("Failed to crate adapter".into())
         } else {
-            Ok(CreateData {
-                adapter: Adapter {
-                    adapter: UnsafeHandle(result),
-                    wintun: wintun.clone(),
-                    guid,
-                },
-                reboot_required: reboot_required != 0,
+            Ok(Adapter {
+                adapter: UnsafeHandle(result),
+                wintun: wintun.clone(),
+                guid,
             })
         }
     }
 
-    /// Attempts to open an existing wintun interface inside `pool` with name `name`.
+    /// Attempts to open an existing wintun interface name `name`.
+    ///
     /// Adapters opened via this call will have an unknown GUID meaning [`Adapter::get_adapter_index`]
     /// will always fail because knowing the adapter's GUID is required to determine its index.
     /// Currently a workaround is to delete and re-create a new adapter every time one is needed so
@@ -174,19 +134,15 @@ impl Adapter {
     /// or via the Win32 API, so PR's that solve this issue are always welcome!
     pub fn open(
         wintun: &Arc<wintun_raw::wintun>,
-        pool: &str,
         name: &str,
     ) -> Result<Adapter, error::WintunError> {
-        let _ = encode_pool_name(pool)?;
-
-        let pool_utf16 = encode_pool_name(pool)?;
         let name_utf16 = encode_adapter_name(name)?;
 
-        crate::log::set_default_logger_if_unset(&wintun);
+        crate::log::set_default_logger_if_unset(wintun);
 
-        let result = unsafe { wintun.WintunOpenAdapter(pool_utf16.as_ptr(), name_utf16.as_ptr()) };
+        let result = unsafe { wintun.WintunOpenAdapter(name_utf16.as_ptr()) };
 
-        if result == ptr::null_mut() {
+        if result.is_null() {
             Err("WintunOpenAdapter failed".into())
         } else {
             Ok(Adapter {
@@ -198,66 +154,12 @@ impl Adapter {
         }
     }
 
-    /// Returns a vector of the wintun adapters that exist in a particular pool
-    pub fn list_all(
-        wintun: &Arc<wintun_raw::wintun>,
-        pool: &str,
-    ) -> Result<Vec<EnumeratedAdapter>, error::WintunError> {
-        let pool_utf16 = encode_pool_name(pool)?;
-        let mut result = Vec::new();
-
-        //Maybe oneday this will be part of the language, or a proc macro
-        struct CallbackData<'a> {
-            vec: &'a mut Vec<EnumeratedAdapter>,
-            wintun: &'a Arc<wintun_raw::wintun>,
-        }
-
-        extern "C" fn enumerate_one(
-            adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
-            param: wintun_raw::LPARAM,
-        ) -> u8 {
-            let data = unsafe { (param as *mut CallbackData).as_mut() }.unwrap();
-            //Push adapter information when the callback is called
-            data.vec.push(EnumeratedAdapter {
-                name: get_adapter_name(data.wintun, adapter),
-                luid: get_adapter_luid(data.wintun, adapter),
-            });
-            1
-        }
-        let mut data = CallbackData {
-            vec: &mut result,
-            wintun,
-        };
-
-        unsafe {
-            wintun.WintunEnumAdapters(
-                pool_utf16.as_ptr(),
-                Some(enumerate_one),
-                (&mut data as *mut CallbackData) as wintun_raw::LPARAM,
-            )
-        };
-
-        Ok(result)
-    }
-
     /// Delete an adapter, consuming it in the process
-    /// Returns `Ok(reboot_suggested: bool)` on success
-    pub fn delete(self, force_close_sessions: bool) -> Result<bool, ()> {
-        let mut reboot_required = 0u8;
-
-        let result = unsafe {
-            self.wintun.WintunDeleteAdapter(
-                self.adapter.0,
-                u8::from(force_close_sessions),
-                &mut reboot_required as *mut u8,
-            )
-        };
-
-        if result != 0 {
-            Ok(reboot_required != 0)
-        } else {
-            Err(())
-        }
+    pub fn delete(self) -> Result<(), ()> {
+        unsafe { self.wintun.WintunCloseAdapter(self.adapter.0) };
+        // Return a result here so that if later the API changes to be fallible, we can support it
+        // without making a breaking change
+        Ok(())
     }
 
     /// Initiates a new wintun session on the given adapter.
@@ -265,7 +167,7 @@ impl Adapter {
     /// Capacity is the size in bytes of the ring buffer used internally by the driver. Must be
     /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MIN_RING_CAPACITY`].
     pub fn start_session(&self, capacity: u32) -> Result<session::Session, error::WintunError> {
-        let range = wintun_raw::WINTUN_MIN_RING_CAPACITY..=wintun_raw::WINTUN_MAX_RING_CAPACITY;
+        let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
         if !range.contains(&capacity) {
             return Err(Box::new(error::ApiError::CapacityOutOfRange(
                 error::OutOfRangeData {
@@ -280,7 +182,7 @@ impl Adapter {
 
         let result = unsafe { self.wintun.WintunStartSession(self.adapter.0, capacity) };
 
-        if result == ptr::null_mut() {
+        if result.is_null() {
             Err("WintunStartSession failed".into())
         } else {
             Ok(session::Session {
@@ -306,12 +208,6 @@ impl Adapter {
         get_adapter_luid(&self.wintun, self.adapter.0)
     }
 
-    /// Returns the name of this adapter. Set by calls to [`Adapter::create`]
-    pub fn get_adapter_name(&self) -> String {
-        // TODO: also expose WintunSetAdapterName
-        get_adapter_name(&self.wintun, self.adapter.0)
-    }
-
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, error::WintunError> {
@@ -333,8 +229,7 @@ impl Adapter {
         //underlying data storage type
         let buf_elements = buf_len as usize / std::mem::size_of::<u32>() + 1;
         //Round up incase integer division truncated a byte that filled a partial element
-        let mut buf: Vec<u32> = Vec::with_capacity(buf_elements);
-        buf.resize(buf_elements, 0);
+        let mut buf: Vec<u32> = vec![0; buf_elements];
 
         let buf_bytes = buf.len() * std::mem::size_of::<u32>();
         assert!(buf_bytes >= buf_len as usize);
@@ -440,9 +335,9 @@ impl Adapter {
 
 impl Drop for Adapter {
     fn drop(&mut self) {
-        //Free adapter on drop
+        //Close adapter on drop
         //This is why we need an Arc of wintun
-        unsafe { self.wintun.WintunFreeAdapter(self.adapter.0) };
+        unsafe { self.wintun.WintunCloseAdapter(self.adapter.0) };
         self.adapter = UnsafeHandle(ptr::null_mut());
     }
 }

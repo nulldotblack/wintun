@@ -5,15 +5,15 @@ use std::sync::{
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
 fn main() {
+    env_logger::init();
     let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
         .expect("Failed to load wintun dll");
 
-    let adapter = match wintun::Adapter::open(&wintun, "Example", "Demo") {
+    let adapter = match wintun::Adapter::open(&wintun, "Demo") {
         Ok(a) => a,
         Err(_) => {
             wintun::Adapter::create(&wintun, "Example", "Demo", None)
                 .expect("Failed to create wintun adapter!")
-                .adapter
         }
     };
 

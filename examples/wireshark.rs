@@ -107,13 +107,8 @@ fn main() {
     let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
         .expect("Failed to load wintun dll");
 
-    info!("Listing wireguard adapters");
-    for adapter in wintun::Adapter::list_all(&wintun, "Wireguard").unwrap() {
-        info!(" {} - {}", adapter.name, adapter.luid);
-    }
-
     let adapter =
-        match wintun::Adapter::open(&wintun, "Example", "Demo") {
+        match wintun::Adapter::open(&wintun, "Demo") {
             Ok(a) => {
                 info!("Opened adapter successfully");
                 a
@@ -121,8 +116,8 @@ fn main() {
             Err(_) => {
                 match wintun::Adapter::create(&wintun, "Example", "Demo", None) {
                 Ok(d) => {
-                    info!("Created adapter successfully! Should reboot: {}", d.reboot_required);
-                    d.adapter
+                    info!("Created adapter successfully! ");
+                    d
                 },
                 Err(err) => panic!("Failed to open adapter and failed to create adapter. Is process running as admin? Error: {}", err),
             }
@@ -373,6 +368,6 @@ fn main() {
         }
     }
 
-    adapter.delete(false).unwrap();
+    adapter.delete().unwrap();
     info!("Saved {} captured packets to out.pcap", packets_captured);
 }
