@@ -82,7 +82,7 @@ impl Adapter {
         pool: &str,
         name: &str,
         guid: Option<u128>,
-    ) -> Result<Adapter, error::WintunError> {
+    ) -> Result<Arc<Adapter>, error::WintunError> {
         let pool_utf16 = encode_pool_name(pool)?;
         let name_utf16 = encode_adapter_name(name)?;
 
@@ -116,11 +116,11 @@ impl Adapter {
         if result.is_null() {
             Err("Failed to crate adapter".into())
         } else {
-            Ok(Adapter {
+            Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
-            })
+            }))
         }
     }
 
@@ -135,7 +135,7 @@ impl Adapter {
     pub fn open(
         wintun: &Arc<wintun_raw::wintun>,
         name: &str,
-    ) -> Result<Adapter, error::WintunError> {
+    ) -> Result<Arc<Adapter>, error::WintunError> {
         let name_utf16 = encode_adapter_name(name)?;
 
         crate::log::set_default_logger_if_unset(wintun);
@@ -145,18 +145,19 @@ impl Adapter {
         if result.is_null() {
             Err("WintunOpenAdapter failed".into())
         } else {
-            Ok(Adapter {
+            Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 // TODO: get GUID somehow
                 guid: 0,
-            })
+            }))
         }
     }
 
     /// Delete an adapter, consuming it in the process
     pub fn delete(self) -> Result<(), ()> {
-        unsafe { self.wintun.WintunCloseAdapter(self.adapter.0) };
+        //Dropping an adapter closes it
+        drop(self);
         // Return a result here so that if later the API changes to be fallible, we can support it
         // without making a breaking change
         Ok(())
@@ -166,7 +167,7 @@ impl Adapter {
     ///
     /// Capacity is the size in bytes of the ring buffer used internally by the driver. Must be
     /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MIN_RING_CAPACITY`].
-    pub fn start_session(&self, capacity: u32) -> Result<session::Session, error::WintunError> {
+    pub fn start_session(self: &Arc<Self>, capacity: u32) -> Result<session::Session, error::WintunError> {
         let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
         if !range.contains(&capacity) {
             return Err(Box::new(error::ApiError::CapacityOutOfRange(
@@ -199,6 +200,7 @@ impl Adapter {
                         std::ptr::null_mut(),
                     ))
                 },
+                adapter: Arc::clone(self),
             })
         }
     }

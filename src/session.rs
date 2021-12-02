@@ -3,6 +3,7 @@ extern crate winapi;
 use crate::packet;
 use crate::util::UnsafeHandle;
 use crate::wintun_raw;
+use crate::Adapter;
 
 use once_cell::sync::OnceCell;
 
@@ -31,6 +32,9 @@ pub struct Session {
     /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
     /// readers to exit
     pub(crate) shutdown_event: UnsafeHandle<winnt::HANDLE>,
+
+    /// The adapter that owns this session
+    pub(crate) adapter: Arc<Adapter>,
 }
 
 impl Session {
@@ -161,12 +165,17 @@ impl Session {
     pub fn shutdown(&self) {
         let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
         let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
-    } 
+    }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
+        let _ = Arc::clone(&self.adapter);
         unsafe { self.wintun.WintunEndSession(self.session.0) };
         self.session.0 = ptr::null_mut();
+
+        //Adapter must be dropped after we call `WintunEndSession`,
+        //if `self.adapter is the last reference
+        //drop(self.adapter)
     }
 }

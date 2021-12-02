@@ -6,10 +6,9 @@ use wintun;
 
 use std::fs::File;
 use std::net::IpAddr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use std::{mem::MaybeUninit, ptr};
 
 use winapi::shared::ipmib;
@@ -368,6 +367,6 @@ fn main() {
         }
     }
 
-    adapter.delete().unwrap();
     info!("Saved {} captured packets to out.pcap", packets_captured);
+    //`main_session` and `adapter` are both dropped
 }

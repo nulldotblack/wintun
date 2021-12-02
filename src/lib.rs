@@ -62,10 +62,8 @@
 //! //the session is stopped on drop
 //! //drop(session);
 //!
-//! //Delete the adapter when finished.
-//! adapter.delete().unwrap();
 //! //drop(adapter)
-//! //And the adapter closes its resources when dropped//!    
+//! //And the adapter closes its resources when dropped
 //! ```
 //!    
 //! See `examples/wireguard.rs` for a more complete example that writes received packets to a pcap
