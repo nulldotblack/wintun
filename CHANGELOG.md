@@ -17,6 +17,7 @@ This was done because the underlying Wintun function was changed to only return 
 - `Adapter::delete` takes no parameters and returns a `Result<(), ()>`.
 The `force_close_sessions` parameter was removed because it was removed from the
 C function. Same for the bool inside the Ok(..) variant
+- `Adapter::create` and `Adapter::open` return `Arc<Adapter>` instead of `Adapter`
 
 ### Added
 

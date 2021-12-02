@@ -117,7 +117,7 @@ pub const MIN_RING_CAPACITY: u32 = 0x2_0000;
 /// Maximum pool name length including zero terminator
 pub const MAX_POOL: usize = 256;
 
-pub use wintun_raw::wintun as dll;
+pub type Wintun = Arc<wintun_raw::wintun>;
 
 use std::sync::Arc;
 
@@ -135,7 +135,7 @@ use std::sync::Arc;
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load() -> Result<Arc<dll>, libloading::Error> {
+pub unsafe fn load() -> Result<Wintun, libloading::Error> {
     load_from_path("wintun")
 }
 
@@ -151,11 +151,11 @@ pub unsafe fn load() -> Result<Arc<dll>, libloading::Error> {
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load_from_path<P>(path: P) -> Result<Arc<dll>, libloading::Error>
+pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, libloading::Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    Ok(Arc::new(wintun_raw::wintun::new(path)?))
+    check_version(wintun_raw::wintun::new(path)?)
 }
 
 /// Attempts to load the Wintun library from an existing [`libloading::Library`].
@@ -168,9 +168,13 @@ where
 /// is inherently unsafe.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading::Library::new`]
-pub unsafe fn load_from_library<L>(library: L) -> Result<Arc<dll>, libloading::Error>
+pub unsafe fn load_from_library<L>(library: L) -> Result<Wintun, libloading::Error>
 where
     L: Into<libloading::Library>,
 {
-    Ok(Arc::new(wintun_raw::wintun::from_library(library)?))
+    check_version(wintun_raw::wintun::from_library(library)?)
+}
+
+fn check_version(lib: wintun_raw::wintun) -> Result<Wintun, libloading::Error> {
+    Ok(Arc::new(lib))
 }
