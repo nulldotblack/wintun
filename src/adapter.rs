@@ -8,6 +8,7 @@ use crate::session;
 use crate::util;
 use crate::util::UnsafeHandle;
 use crate::wintun_raw;
+use crate::Wintun;
 
 use std::ptr;
 use std::sync::Arc;
@@ -28,7 +29,7 @@ use winapi::{
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
 pub struct Adapter {
     adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
-    wintun: Arc<wintun_raw::wintun>,
+    wintun: Wintun,
     guid: u128,
 }
 
@@ -60,10 +61,7 @@ fn encode_adapter_name(name: &str) -> Result<U16CString, error::WintunError> {
     encode_utf16(name, crate::MAX_POOL)
 }
 
-fn get_adapter_luid(
-    wintun: &Arc<wintun_raw::wintun>,
-    adapter: wintun_raw::WINTUN_ADAPTER_HANDLE,
-) -> u64 {
+fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> u64 {
     let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
     unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
     unsafe { std::mem::transmute(luid) }
@@ -78,7 +76,7 @@ impl Adapter {
     /// Adapters obtained via this function will be able to return their adapter index via
     /// [`Adapter::get_adapter_index`]
     pub fn create(
-        wintun: &Arc<wintun_raw::wintun>,
+        wintun: &Wintun,
         pool: &str,
         name: &str,
         guid: Option<u128>,
@@ -132,10 +130,7 @@ impl Adapter {
     /// that it gets created with a known GUID, allowing [`Adapter::get_adapter_index`] to works as
     /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
     /// or via the Win32 API, so PR's that solve this issue are always welcome!
-    pub fn open(
-        wintun: &Arc<wintun_raw::wintun>,
-        name: &str,
-    ) -> Result<Arc<Adapter>, error::WintunError> {
+    pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, error::WintunError> {
         let name_utf16 = encode_adapter_name(name)?;
 
         crate::log::set_default_logger_if_unset(wintun);
@@ -167,7 +162,10 @@ impl Adapter {
     ///
     /// Capacity is the size in bytes of the ring buffer used internally by the driver. Must be
     /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MIN_RING_CAPACITY`].
-    pub fn start_session(self: &Arc<Self>, capacity: u32) -> Result<session::Session, error::WintunError> {
+    pub fn start_session(
+        self: &Arc<Self>,
+        capacity: u32,
+    ) -> Result<session::Session, error::WintunError> {
         let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
         if !range.contains(&capacity) {
             return Err(Box::new(error::ApiError::CapacityOutOfRange(

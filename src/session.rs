@@ -1,5 +1,6 @@
 extern crate winapi;
 
+use crate::Wintun;
 use crate::packet;
 use crate::util::UnsafeHandle;
 use crate::wintun_raw;
@@ -23,7 +24,7 @@ pub struct Session {
     pub(crate) session: UnsafeHandle<wintun_raw::WINTUN_SESSION_HANDLE>,
 
     /// Shared dll for required wintun driver functions
-    pub(crate) wintun: Arc<wintun_raw::wintun>,
+    pub(crate) wintun: Wintun,
 
     /// Windows event handle that is signaled by the wintun driver when data becomes available to
     /// read

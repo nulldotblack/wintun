@@ -18,6 +18,7 @@ This was done because the underlying Wintun function was changed to only return 
 The `force_close_sessions` parameter was removed because it was removed from the
 C function. Same for the bool inside the Ok(..) variant
 - `Adapter::create` and `Adapter::open` return `Arc<Adapter>` instead of `Adapter`
+- `get_running_driver_version` now returns a proper Result<Version, ()>. 
 
 ### Added
 

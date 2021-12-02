@@ -123,6 +123,9 @@ fn main() {
             }
         };
 
+    let version = wintun::get_running_driver_version(&wintun).unwrap();
+    info!("Using wintun version: {:?}", version);
+
     //Give wintun interface ip and gateway
     let interface_address: IpAddr = "10.8.0.2".parse().unwrap();
     let interface_gateway: IpAddr = "10.8.0.1".parse().unwrap();
