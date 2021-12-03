@@ -1,10 +1,10 @@
 extern crate winapi;
 
-use crate::Wintun;
 use crate::packet;
 use crate::util::UnsafeHandle;
 use crate::wintun_raw;
 use crate::Adapter;
+use crate::Wintun;
 
 use once_cell::sync::OnceCell;
 

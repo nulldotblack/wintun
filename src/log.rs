@@ -1,7 +1,7 @@
+use crate::wintun_raw;
 use crate::Wintun;
 use log::*;
 use widestring::U16CStr;
-use crate::wintun_raw;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
