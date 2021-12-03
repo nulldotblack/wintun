@@ -3,7 +3,7 @@
 This format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org).
 
-## [0.2.0] - 2021-12-02
+## [0.2.0] - 2021-12-03
 
 Added support for wintun 0.14.
 
