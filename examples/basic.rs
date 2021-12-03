@@ -1,21 +1,27 @@
+use log::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
 fn main() {
+    env_logger::init();
     let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
         .expect("Failed to load wintun dll");
 
-    let adapter = match wintun::Adapter::open(&wintun, "Example", "Demo") {
+    let version = wintun::get_running_driver_version(&wintun);
+    info!("Using wintun version: {:?}", version);
+
+    let adapter = match wintun::Adapter::open(&wintun, "Demo") {
         Ok(a) => a,
-        Err(_) => {
-            wintun::Adapter::create(&wintun, "Example", "Demo", None)
-                .expect("Failed to create wintun adapter!")
-                .adapter
-        }
+        Err(_) => wintun::Adapter::create(&wintun, "Example", "Demo", None)
+            .expect("Failed to create wintun adapter!"),
     };
+
+    let version = wintun::get_running_driver_version(&wintun).unwrap();
+    info!("Using wintun version: {:?}", version);
 
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
 

@@ -3,6 +3,8 @@ extern crate winapi;
 use crate::packet;
 use crate::util::UnsafeHandle;
 use crate::wintun_raw;
+use crate::Adapter;
+use crate::Wintun;
 
 use once_cell::sync::OnceCell;
 
@@ -22,7 +24,7 @@ pub struct Session {
     pub(crate) session: UnsafeHandle<wintun_raw::WINTUN_SESSION_HANDLE>,
 
     /// Shared dll for required wintun driver functions
-    pub(crate) wintun: Arc<wintun_raw::wintun>,
+    pub(crate) wintun: Wintun,
 
     /// Windows event handle that is signaled by the wintun driver when data becomes available to
     /// read
@@ -31,6 +33,9 @@ pub struct Session {
     /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
     /// readers to exit
     pub(crate) shutdown_event: UnsafeHandle<winnt::HANDLE>,
+
+    /// The adapter that owns this session
+    pub(crate) adapter: Arc<Adapter>,
 }
 
 impl Session {
@@ -46,7 +51,7 @@ impl Session {
             self.wintun
                 .WintunAllocateSendPacket(self.session.0, size as u32)
         };
-        if ptr == ptr::null_mut() {
+        if ptr.is_null() {
             Err(())
         } else {
             Ok(packet::Packet {
@@ -83,7 +88,7 @@ impl Session {
         };
 
         debug_assert!(size <= u16::MAX as u32);
-        if ptr == ptr::null_mut() {
+        if ptr.is_null() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
             let last_error = unsafe { GetLastError() };
             if last_error == winerror::ERROR_NO_MORE_ITEMS {
@@ -162,15 +167,16 @@ impl Session {
         let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
         let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
     }
-
-    pub(crate) fn handle(&self) -> wintun_raw::WINTUN_SESSION_HANDLE {
-        self.session.0
-    }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
+        let _ = Arc::clone(&self.adapter);
         unsafe { self.wintun.WintunEndSession(self.session.0) };
         self.session.0 = ptr::null_mut();
+
+        //Adapter must be dropped after we call `WintunEndSession`,
+        //if `self.adapter is the last reference
+        //drop(self.adapter)
     }
 }

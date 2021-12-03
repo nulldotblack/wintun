@@ -1,5 +1,3 @@
-use crate::wintun_raw;
-
 use winapi::{
     shared::ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
     um::{winbase, winnt::MAKELANGID},
@@ -7,7 +5,6 @@ use winapi::{
 
 use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::Arc;
 
 use widestring::U16Str;
 
@@ -49,8 +46,21 @@ pub fn get_error_message(err_code: u32) -> String {
     )
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Version {
+    pub major: u16,
+    pub minor: u16,
+}
+
 /// Returns the major and minor version of the wintun driver
-pub fn get_running_driver_version(wintun: &Arc<wintun_raw::wintun>) -> (u16, u16) {
+pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, ()> {
     let version = unsafe { wintun.WintunGetRunningDriverVersion() };
-    (((version >> 16) & 0xFF) as u16, (version & 0xFF) as u16)
+    if version == 0 {
+        Err(())
+    } else {
+        Ok(Version {
+            major: ((version >> 16) & 0xFF) as u16,
+            minor: (version & 0xFF) as u16,
+        })
+    }
 }

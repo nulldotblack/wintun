@@ -6,10 +6,9 @@ use wintun;
 
 use std::fs::File;
 use std::net::IpAddr;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use std::{mem::MaybeUninit, ptr};
 
 use winapi::shared::ipmib;
@@ -107,13 +106,8 @@ fn main() {
     let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
         .expect("Failed to load wintun dll");
 
-    info!("Listing wireguard adapters");
-    for adapter in wintun::Adapter::list_all(&wintun, "Wireguard").unwrap() {
-        info!(" {} - {}", adapter.name, adapter.luid);
-    }
-
     let adapter =
-        match wintun::Adapter::open(&wintun, "Example", "Demo") {
+        match wintun::Adapter::open(&wintun, "Demo") {
             Ok(a) => {
                 info!("Opened adapter successfully");
                 a
@@ -121,13 +115,16 @@ fn main() {
             Err(_) => {
                 match wintun::Adapter::create(&wintun, "Example", "Demo", None) {
                 Ok(d) => {
-                    info!("Created adapter successfully! Should reboot: {}", d.reboot_required);
-                    d.adapter
+                    info!("Created adapter successfully! ");
+                    d
                 },
                 Err(err) => panic!("Failed to open adapter and failed to create adapter. Is process running as admin? Error: {}", err),
             }
             }
         };
+
+    let version = wintun::get_running_driver_version(&wintun).unwrap();
+    info!("Using wintun version: {:?}", version);
 
     //Give wintun interface ip and gateway
     let interface_address: IpAddr = "10.8.0.2".parse().unwrap();
@@ -373,6 +370,6 @@ fn main() {
         }
     }
 
-    adapter.delete(false).unwrap();
     info!("Saved {} captured packets to out.pcap", packets_captured);
+    //`main_session` and `adapter` are both dropped
 }

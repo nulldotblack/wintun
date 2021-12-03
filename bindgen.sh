@@ -1,2 +1,7 @@
 #!/bin/bash
-bindgen --dynamic-loading wintun wintun/wintun-wrapper.h > src/wintun_raw.rs
+bindgen \
+--allowlist-function "Wintun.*" \
+--allowlist-type "WINTUN_.*" \
+--dynamic-loading wintun \
+--dynamic-link-require-all \
+wintun/wintun_functions.h > src/wintun_raw.rs

@@ -22,7 +22,7 @@ pub struct Packet {
     //
     //This just leaves packets potentially outliving the session that allocated them posing a
     //problem.
-    //Fourthly we have an Arc to the session that allocated this packet, meaning that the lifetime
+    //Fortunately we have an Arc to the session that allocated this packet, meaning that the lifetime
     //of the session that created this packet is at least as long as the packet.
     //Because this is private (to external users) and we only write to this field when allocating
     //new packets, it is impossible for the memory that is pointed to by bytes to outlive the
@@ -45,14 +45,14 @@ pub struct Packet {
 impl Packet {
     /// Returns the bytes this packet holds as &mut.
     /// The lifetime of the bytes is tied to the lifetime of this packet.
-    pub fn bytes_mut<'a>(&'a mut self) -> &'a mut [u8] {
-        &mut self.bytes
+    pub fn bytes_mut(&mut self) -> &mut [u8] {
+        self.bytes
     }
 
     /// Returns an immutable reference to the bytes this packet holds.
     /// The lifetime of the bytes is tied to the lifetime of this packet.
-    pub fn bytes<'a>(&'a self) -> &'a [u8] {
-        &self.bytes
+    pub fn bytes(&self) -> &[u8] {
+        self.bytes
     }
 }
 

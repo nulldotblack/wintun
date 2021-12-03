@@ -22,7 +22,9 @@ impl Display for ApiError {
             ApiError::CapacityOutOfRange(data) => write!(
                 f,
                 "Capacity {} out of range. Must be within {}..={}",
-                data.value, data.range.start(), data.range.end()
+                data.value,
+                data.range.start(),
+                data.range.end()
             ),
             ApiError::CapacityNotPowerOfTwo(cap) => {
                 write!(f, "Capacity {} is not a power of two", cap)
