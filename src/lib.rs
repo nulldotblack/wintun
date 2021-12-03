@@ -5,14 +5,8 @@
 //!
 //! # Usage
 //!
-//! Add a dependency on this library to your `Cargo.toml`
-//!
-//! ```toml
-//! [dependencies]
-//! wintun = "0.1"
-//! ```
-//!
-//! Inside your code load the wintun.dll signed driver file, downloaded from <https://wintun.net>
+//! Inside your code load the wintun.dll signed driver file, downloaded from <https://wintun.net>,
+//! using [`load`], [`load_from_path`] or [`load_from_library`].
 //!
 //! Then either call [`Adapter::create`] or [`Adapter::open`] to obtain a wintun
 //! adapter. Start a session with [`Adapter::start_session`].
@@ -66,7 +60,7 @@
 //! //And the adapter closes its resources when dropped
 //! ```
 //!    
-//! See `examples/wireguard.rs` for a more complete example that writes received packets to a pcap
+//! See `examples/wireshark.rs` for a more complete example that writes received packets to a pcap
 //! file.
 //!
 //! # Features
