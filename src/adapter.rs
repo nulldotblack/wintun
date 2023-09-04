@@ -112,7 +112,7 @@ impl Adapter {
         };
 
         if result.is_null() {
-            Err("Failed to crate adapter".into())
+            Err("Failed to create adapter".into())
         } else {
             Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),

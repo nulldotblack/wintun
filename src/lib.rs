@@ -149,7 +149,7 @@ pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, libloading::Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    check_version(wintun_raw::wintun::new(path)?)
+    Ok(Arc::new(wintun_raw::wintun::new(path)?))
 }
 
 /// Attempts to load the Wintun library from an existing [`libloading::Library`].
@@ -166,9 +166,5 @@ pub unsafe fn load_from_library<L>(library: L) -> Result<Wintun, libloading::Err
 where
     L: Into<libloading::Library>,
 {
-    check_version(wintun_raw::wintun::from_library(library)?)
-}
-
-fn check_version(lib: wintun_raw::wintun) -> Result<Wintun, libloading::Error> {
-    Ok(Arc::new(lib))
+    Ok(Arc::new(wintun_raw::wintun::from_library(library)?))
 }

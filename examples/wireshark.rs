@@ -232,15 +232,16 @@ fn main() {
     let file = File::create("out.pcap").unwrap();
 
     let header = pcap_file::pcap::PcapHeader {
-        magic_number: 0xa1b2c3d4,
         version_major: 2,
         version_minor: 4,
         ts_correction: 0,
         ts_accuracy: 0,
         snaplen: 65535,
         datalink: pcap_file::DataLink::RAW,
+        ts_resolution: pcap_file::TsResolution::NanoSecond,
+        endianness: pcap_file::Endianness::Little,
     };
-    let mut writer = pcap_file::PcapWriter::with_header(header, file).unwrap();
+    let mut writer = pcap_file::pcap::PcapWriter::with_header(file, header).unwrap();
     let main_session = Arc::new(
         adapter
             .start_session(wintun::MAX_RING_CAPACITY)
@@ -261,14 +262,8 @@ fn main() {
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .expect("Time went backwards");
-                    writer
-                        .write(
-                            now.as_secs() as u32,
-                            now.subsec_nanos(),
-                            bytes,
-                            bytes.len() as u32,
-                        )
-                        .unwrap();
+                    let packet = pcap_file::pcap::PcapPacket::new(now, bytes.len() as u32, bytes);
+                    writer.write_packet(&packet).unwrap();
                 }
                 Err(err) => {
                     error!("Got error while reading: {:?}", err);
