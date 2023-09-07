@@ -3,24 +3,19 @@
 ///
 /// The [`Adapter::create`] and [`Adapter::open`] functions serve as the entry point to using
 /// wintun functionality
-use crate::error;
-use crate::session;
-use crate::util;
-use crate::util::UnsafeHandle;
-use crate::wintun_raw;
-use crate::Wintun;
-
-use std::ptr;
-use std::sync::Arc;
-
+use crate::{
+    error::{Error, OutOfRangeData},
+    session,
+    util::{self, UnsafeHandle},
+    wintun_raw, Wintun,
+};
 use itertools::Itertools;
-use log::*;
 use once_cell::sync::OnceCell;
 use rand::Rng;
-
+use std::ptr;
+use std::sync::Arc;
 use widestring::U16CStr;
 use widestring::U16CString;
-
 use winapi::{
     shared::winerror,
     um::{ipexport, iphlpapi, synchapi},
@@ -33,8 +28,8 @@ pub struct Adapter {
     guid: u128,
 }
 
-fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, error::WintunError> {
-    let utf16 = U16CString::from_str(string)?;
+fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, Error> {
+    let utf16 = U16CString::from_str(string).map_err(|e| Error::from(format!("{e}")))?;
     if utf16.len() >= max_characters {
         //max_characters is the maximum number of characters including the null terminator. And .len() measures the
         //number of characters (excluding the null terminator). Therefore we can hold a string with
@@ -42,7 +37,6 @@ fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, error
         //of length max_characters needs max_characters + 1 to store the null terminator the >=
         //check holds
         Err(format!(
-            //TODO: Better error handling
             "Length too large. Size: {}, Max: {}",
             utf16.len(),
             max_characters
@@ -53,11 +47,11 @@ fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, error
     }
 }
 
-fn encode_pool_name(name: &str) -> Result<U16CString, error::WintunError> {
+fn encode_pool_name(name: &str) -> Result<U16CString, Error> {
     encode_utf16(name, crate::MAX_POOL)
 }
 
-fn encode_adapter_name(name: &str) -> Result<U16CString, error::WintunError> {
+fn encode_adapter_name(name: &str) -> Result<U16CString, Error> {
     encode_utf16(name, crate::MAX_POOL)
 }
 
@@ -80,7 +74,7 @@ impl Adapter {
         pool: &str,
         name: &str,
         guid: Option<u128>,
-    ) -> Result<Arc<Adapter>, error::WintunError> {
+    ) -> Result<Arc<Adapter>, Error> {
         let pool_utf16 = encode_pool_name(pool)?;
         let name_utf16 = encode_adapter_name(name)?;
 
@@ -130,7 +124,7 @@ impl Adapter {
     /// that it gets created with a known GUID, allowing [`Adapter::get_adapter_index`] to works as
     /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
     /// or via the Win32 API, so PR's that solve this issue are always welcome!
-    pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, error::WintunError> {
+    pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
         let name_utf16 = encode_adapter_name(name)?;
 
         crate::log::set_default_logger_if_unset(wintun);
@@ -150,7 +144,7 @@ impl Adapter {
     }
 
     /// Delete an adapter, consuming it in the process
-    pub fn delete(self) -> Result<(), crate::ApiError> {
+    pub fn delete(self) -> Result<(), Error> {
         //Dropping an adapter closes it
         drop(self);
         // Return a result here so that if later the API changes to be fallible, we can support it
@@ -162,21 +156,16 @@ impl Adapter {
     ///
     /// Capacity is the size in bytes of the ring buffer used internally by the driver. Must be
     /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MIN_RING_CAPACITY`].
-    pub fn start_session(
-        self: &Arc<Self>,
-        capacity: u32,
-    ) -> Result<session::Session, error::WintunError> {
+    pub fn start_session(self: &Arc<Self>, capacity: u32) -> Result<session::Session, Error> {
         let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
         if !range.contains(&capacity) {
-            return Err(Box::new(error::ApiError::CapacityOutOfRange(
-                error::OutOfRangeData {
-                    range,
-                    value: capacity,
-                },
-            )));
+            return Err(Error::CapacityOutOfRange(OutOfRangeData {
+                range,
+                value: capacity,
+            }));
         }
         if !capacity.is_power_of_two() {
-            return Err(Box::new(error::ApiError::CapacityNotPowerOfTwo(capacity)));
+            return Err(Error::CapacityNotPowerOfTwo(capacity));
         }
 
         let result = unsafe { self.wintun.WintunStartSession(self.adapter.0, capacity) };
@@ -210,7 +199,7 @@ impl Adapter {
 
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
-    pub fn get_adapter_index(&self) -> Result<u32, error::WintunError> {
+    pub fn get_adapter_index(&self) -> Result<u32, Error> {
         let mut buf_len: u32 = 0;
         //First figure out the size of the buffer needed to store the adapter info
         //SAFETY: We are upholding the contract of GetInterfaceInfo. buf_len is a valid pointer to
@@ -219,8 +208,7 @@ impl Adapter {
             unsafe { iphlpapi::GetInterfaceInfo(std::ptr::null_mut(), &mut buf_len as *mut u32) };
         if result != winerror::NO_ERROR && result != winerror::ERROR_INSUFFICIENT_BUFFER {
             let err_msg = util::get_error_message(result);
-            error!("Failed to get interface info: {}", err_msg);
-            //TODO: Better error types
+            log::error!("Failed to get interface info: {}", err_msg);
             return Err(format!("GetInterfaceInfo failed: {}", err_msg).into());
         }
 
@@ -253,9 +241,11 @@ impl Adapter {
             let err_msg = util::get_error_message(result);
             //TODO: maybe over allocate the buffer in case the needed size changes between the two
             //calls to GetInterfaceInfo if another adapter is added
-            error!(
+            log::error!(
                 "Failed to get interface info a second time: {}. Original len: {}, final len: {}",
-                err_msg, buf_len, final_buf_len
+                err_msg,
+                buf_len,
+                final_buf_len
             );
             return Err(format!("GetInterfaceInfo failed a second time: {}", err_msg).into());
         }
@@ -296,7 +286,7 @@ impl Adapter {
             ))?;
             let digits: Vec<u8> = name[open..close]
                 .chars()
-                .filter(|c| c.is_digit(16))
+                .filter(|c| c.is_ascii_hexdigit())
                 .chunks(2)
                 .into_iter()
                 .filter_map(|mut chunk| {

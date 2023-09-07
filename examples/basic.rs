@@ -1,4 +1,3 @@
-use log::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -12,7 +11,7 @@ fn main() {
         .expect("Failed to load wintun dll");
 
     let version = wintun::get_running_driver_version(&wintun);
-    info!("Using wintun version: {:?}", version);
+    log::info!("Using wintun version: {:?}", version);
 
     let adapter = match wintun::Adapter::open(&wintun, "Demo") {
         Ok(a) => a,
@@ -21,7 +20,7 @@ fn main() {
     };
 
     let version = wintun::get_running_driver_version(&wintun).unwrap();
-    info!("Using wintun version: {:?}", version);
+    log::info!("Using wintun version: {:?}", version);
 
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY).unwrap());
 

@@ -1,7 +1,7 @@
 use crate::{
     packet,
     util::{self, UnsafeHandle},
-    wintun_raw, Adapter, ApiError, Wintun,
+    wintun_raw, Adapter, Error, Wintun,
 };
 use once_cell::sync::OnceCell;
 use winapi::shared::winerror;
@@ -42,13 +42,13 @@ impl Session {
     /// Therefore if a packet is allocated using this function, and then never sent, it will hold
     /// up the send queue for all other packets allocated in the future. It is okay for the session
     /// to shutdown with allocated packets that have not yet been sent
-    pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, ApiError> {
+    pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, Error> {
         let ptr = unsafe {
             self.wintun
                 .WintunAllocateSendPacket(self.session.0, size as u32)
         };
         if ptr.is_null() {
-            Err(ApiError::SysError(util::get_last_error()))
+            Err(Error::SysError(util::get_last_error()))
         } else {
             Ok(packet::Packet {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -75,7 +75,7 @@ impl Session {
     /// Attempts to receive a packet from the virtual interface without blocking.
     /// If there are no packets currently in the receive queue, this function returns Ok(None)
     /// without blocking. If blocking until a packet is desirable, use [`Session::receive_blocking`]
-    pub fn try_receive(self: &Arc<Self>) -> Result<Option<packet::Packet>, ApiError> {
+    pub fn try_receive(self: &Arc<Self>) -> Result<Option<packet::Packet>, Error> {
         let mut size = 0u32;
 
         let ptr = unsafe {
@@ -90,7 +90,7 @@ impl Session {
             if last_error == winerror::ERROR_NO_MORE_ITEMS {
                 Ok(None)
             } else {
-                Err(ApiError::SysError(util::get_last_error()))
+                Err(Error::SysError(util::get_last_error()))
             }
         } else {
             Ok(Some(packet::Packet {
@@ -105,7 +105,7 @@ impl Session {
 
     /// Returns the low level read event handle that is signaled when more data becomes available
     /// to read
-    pub(crate) fn get_read_wait_event(&self) -> Result<winnt::HANDLE, ApiError> {
+    pub(crate) fn get_read_wait_event(&self) -> Result<winnt::HANDLE, Error> {
         Ok(self
             .read_event
             .get_or_init(|| unsafe {
@@ -117,7 +117,7 @@ impl Session {
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
     /// If the session is closed via [`Session::shutdown`] all threads currently blocking inside this function
     /// will return Err(())
-    pub fn receive_blocking(self: &Arc<Self>) -> Result<packet::Packet, ApiError> {
+    pub fn receive_blocking(self: &Arc<Self>) -> Result<packet::Packet, Error> {
         loop {
             //Try 5 times to receive without blocking so we don't have to issue a syscall to wait
             //for the event if packets are being received at a rapid rate
@@ -144,14 +144,14 @@ impl Session {
                 )
             };
             match result {
-                winbase::WAIT_FAILED => return Err(ApiError::SysError(util::get_last_error())),
+                winbase::WAIT_FAILED => return Err(Error::SysError(util::get_last_error())),
                 _ => {
                     if result == winbase::WAIT_OBJECT_0 {
                         //We have data!
                         continue;
                     } else if result == winbase::WAIT_OBJECT_0 + 1 {
                         //Shutdown event triggered
-                        return Err(ApiError::SysError(util::get_last_error()));
+                        return Err(Error::SysError(util::get_last_error()));
                     }
                 }
             }

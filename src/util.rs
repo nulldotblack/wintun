@@ -58,10 +58,10 @@ pub struct Version {
 }
 
 /// Returns the major and minor version of the wintun driver
-pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, crate::ApiError> {
+pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, crate::Error> {
     let version = unsafe { wintun.WintunGetRunningDriverVersion() };
     if version == 0 {
-        Err(crate::ApiError::SysError(get_last_error()))
+        Err(crate::Error::SysError(get_last_error()))
     } else {
         let v = version.to_be_bytes();
         Ok(Version {

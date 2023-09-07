@@ -1,6 +1,5 @@
 use crate::wintun_raw;
 use crate::Wintun;
-use log::*;
 use widestring::U16CStr;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,10 +30,10 @@ pub unsafe extern "C" fn default_logger(
     let msg = unsafe { U16CStr::from_ptr_str(message) };
     let utf8_msg = msg.to_string_lossy();
     match level {
-        wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_INFO => info!("WinTun: {}", utf8_msg),
-        wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_WARN => warn!("WinTun: {}", utf8_msg),
-        wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_ERR => error!("WinTun: {}", utf8_msg),
-        _ => error!("WinTun: {} (with invalid log level {})", utf8_msg, level),
+        wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_INFO => log::info!("WinTun: {}", utf8_msg),
+        wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_WARN => log::warn!("WinTun: {}", utf8_msg),
+        wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_ERR => log::error!("WinTun: {}", utf8_msg),
+        _ => log::error!("WinTun: {} (with invalid log level {})", utf8_msg, level),
     }
 }
 

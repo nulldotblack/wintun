@@ -1,7 +1,3 @@
-use std::fmt::Display;
-
-pub type WintunError = Box<dyn std::error::Error>;
-
 /// Error type used to convey that a value is outside of a range that it must fall inside
 #[derive(Debug)]
 pub struct OutOfRangeData<T> {
@@ -11,28 +7,40 @@ pub struct OutOfRangeData<T> {
 
 /// Error type returned when preconditions of this API are broken
 #[derive(Debug)]
-pub enum ApiError {
+pub enum Error {
     CapacityNotPowerOfTwo(u32),
     CapacityOutOfRange(OutOfRangeData<u32>),
     SysError(String),
 }
 
-impl Display for ApiError {
+impl From<String> for Error {
+    fn from(value: String) -> Self {
+        Error::SysError(value)
+    }
+}
+
+impl From<&str> for Error {
+    fn from(value: &str) -> Self {
+        Error::SysError(value.to_string())
+    }
+}
+
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            ApiError::CapacityOutOfRange(data) => write!(
+            Error::CapacityOutOfRange(data) => write!(
                 f,
                 "Capacity {} out of range. Must be within {}..={}",
                 data.value,
                 data.range.start(),
                 data.range.end()
             ),
-            ApiError::CapacityNotPowerOfTwo(cap) => {
+            Error::CapacityNotPowerOfTwo(cap) => {
                 write!(f, "Capacity {} is not a power of two", cap)
             }
-            ApiError::SysError(msg) => write!(f, "System error: {}", msg),
+            Error::SysError(msg) => write!(f, "System error: {}", msg),
         }
     }
 }
 
-impl std::error::Error for ApiError {}
+impl std::error::Error for Error {}

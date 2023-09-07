@@ -94,7 +94,7 @@ mod util;
 mod wintun_raw;
 
 pub use crate::adapter::Adapter;
-pub use crate::error::{ApiError, OutOfRangeData, WintunError};
+pub use crate::error::{Error, OutOfRangeData};
 pub use crate::log::{default_logger, reset_logger, set_logger};
 pub use crate::packet::Packet;
 pub use crate::session::Session;

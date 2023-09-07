@@ -2,8 +2,6 @@
 //! writes all routed packets to a pcap file for analysis in Wireshark
 //! Must be run as Administrator
 
-use wintun;
-
 use std::fs::File;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,16 +9,15 @@ use std::sync::Arc;
 
 use std::{mem::MaybeUninit, ptr};
 
-use winapi::shared::ipmib;
 use winapi::{
     shared::{
+        ipmib,
         ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
         winerror, ws2def, ws2ipdef,
     },
     um::{iphlpapi, winbase, winnt::MAKELANGID},
 };
 
-use log::*;
 use packet::Builder;
 use std::time::{SystemTime, UNIX_EPOCH};
 use subprocess::{Popen, PopenConfig, Redirection};
@@ -109,13 +106,13 @@ fn main() {
     let adapter =
         match wintun::Adapter::open(&wintun, "Demo") {
             Ok(a) => {
-                info!("Opened adapter successfully");
+               log::info!("Opened adapter successfully");
                 a
             }
             Err(_) => {
                 match wintun::Adapter::create(&wintun, "Example", "Demo", None) {
                 Ok(d) => {
-                    info!("Created adapter successfully! ");
+                    log::info!("Created adapter successfully! ");
                     d
                 },
                 Err(err) => panic!("Failed to open adapter and failed to create adapter. Is process running as admin? Error: {}", err),
@@ -124,7 +121,7 @@ fn main() {
         };
 
     let version = wintun::get_running_driver_version(&wintun).unwrap();
-    info!("Using wintun version: {:?}", version);
+    log::info!("Using wintun version: {:?}", version);
 
     //Give wintun interface ip and gateway
     let interface_address: IpAddr = "10.8.0.2".parse().unwrap();
@@ -143,27 +140,27 @@ fn main() {
             &mut row as *mut ipmib::MIB_IPFORWARDROW,
         );
         if result != winerror::NO_ERROR {
-            error!("Failed to get best route: {}", get_error_message(result));
+            log::error!("Failed to get best route: {}", get_error_message(result));
             return;
         }
-        trace!("Route: {:?}", row.dwForwardDest.to_ne_bytes());
-        trace!("Mask: {:?}", row.dwForwardMask.to_ne_bytes());
-        trace!("Policy: {:?}", row.dwForwardPolicy);
-        trace!("NextHop: {:?}", row.dwForwardNextHop.to_ne_bytes());
+        log::trace!("Route: {:?}", row.dwForwardDest.to_ne_bytes());
+        log::trace!("Mask: {:?}", row.dwForwardMask.to_ne_bytes());
+        log::trace!("Policy: {:?}", row.dwForwardPolicy);
+        log::trace!("NextHop: {:?}", row.dwForwardNextHop.to_ne_bytes());
         let gateway_bytes = row.dwForwardNextHop.to_ne_bytes();
         if gateway_bytes == [0, 0, 0, 0] {
-            warn!("Gateway is 0.0.0.0. This may cause problems.");
-            warn!("Usually it is something like 192.168.0.1");
-            warn!("Is another VPN connection active?");
+            log::warn!("Gateway is 0.0.0.0. This may cause problems.");
+            log::warn!("Usually it is something like 192.168.0.1");
+            log::warn!("Is another VPN connection active?");
         }
         IpAddr::V4(gateway_bytes.into())
     };
-    info!("Gateway is: {}", gateway);
+    log::info!("Gateway is: {}", gateway);
 
     let wintun_adapter_index = adapter
         .get_adapter_index()
         .expect("Failed to get adapter index");
-    info!("Index is {}", wintun_adapter_index);
+    log::info!("Index is {}", wintun_adapter_index);
 
     let mut routes: Vec<RouteCmd> = Vec::new();
     routes.push(RouteCmd::set(format!(
@@ -192,19 +189,18 @@ fn main() {
 
     //Execute route commands so that the system routes packets to us
     for route in &routes {
-        let mut args: Vec<String> = Vec::new();
-        args.push("netsh".to_owned());
-        args.push("interface".to_owned());
-        args.push("ip".to_owned());
-        args.push(
+        let mut args: Vec<String> = vec![
+            "netsh".to_owned(),
+            "interface".to_owned(),
+            "ip".to_owned(),
             match route.kind {
                 RouteCmdKind::Add => "add",
                 RouteCmdKind::Set => "set",
             }
             .to_owned(),
-        );
+        ];
         args.extend(route.cmd.split(' ').map(|arg| arg.to_owned()));
-        info!("Running {:?}", &args);
+        log::info!("Running {:?}", &args);
         let mut result = Popen::create(
             args.as_slice(),
             PopenConfig {
@@ -224,7 +220,7 @@ fn main() {
         let output = raw_output.trim();
         let status = result.wait().expect("Failed to get process exit status");
         if !status.success() || (!output.is_empty() && output != "Ok.") {
-            error!("Running process: {:?} failed! Output: {}", args, output);
+            log::error!("Running process: {:?} failed! Output: {}", args, output);
             return;
         }
     }
@@ -253,7 +249,7 @@ fn main() {
 
     let reader = std::thread::spawn(move || {
         let mut packet_count = 0;
-        info!("Starting reader");
+        log::info!("Starting reader");
         while RUNNING.load(Ordering::Relaxed) {
             match reader_session.receive_blocking() {
                 Ok(mut packet) => {
@@ -266,7 +262,7 @@ fn main() {
                     writer.write_packet(&packet).unwrap();
                 }
                 Err(err) => {
-                    error!("Got error while reading: {:?}", err);
+                    log::error!("Got error while reading: {:?}", err);
                     break;
                 }
             }
@@ -274,7 +270,7 @@ fn main() {
         packet_count
     });
     let writer = std::thread::spawn(move || {
-        info!("Starting writer");
+        log::info!("Starting writer");
 
         let v4_dest = match interface_address {
             IpAddr::V4(v4) => v4,
@@ -320,25 +316,26 @@ fn main() {
     let _ = std::io::stdin().read_line(&mut string);
     RUNNING.store(false, Ordering::Relaxed);
 
-    info!("Stopping session");
+    log::info!("Stopping session");
     main_session.shutdown();
 
     let packets_captured = reader.join().unwrap();
     writer.join().unwrap();
 
-    info!("Finished session successfully!");
+    log::info!("Finished session successfully!");
 
     for route in &routes {
         match route.kind {
             RouteCmdKind::Add => {
-                let mut args: Vec<String> = Vec::new();
-                args.push("netsh".to_owned());
-                args.push("interface".to_owned());
-                args.push("ip".to_owned());
-                args.push("delete".to_owned());
+                let mut args: Vec<String> = vec![
+                    "netsh".to_owned(),
+                    "interface".to_owned(),
+                    "ip".to_owned(),
+                    "delete".to_owned(),
+                ];
 
                 args.extend(route.cmd.split(' ').map(|arg| arg.to_owned()));
-                info!("Running {:?}", &args);
+                log::info!("Running {:?}", &args);
                 let mut result = Popen::create(
                     args.as_slice(),
                     PopenConfig {
@@ -358,13 +355,13 @@ fn main() {
                 let output = raw_output.trim();
                 let status = result.wait().expect("Failed to get process exit status");
                 if !status.success() || (!output.is_empty() && output != "Ok.") {
-                    warn!("Running process: {:?} failed! Output: {}", args, output);
+                    log::warn!("Running process: {:?} failed! Output: {}", args, output);
                 }
             }
             RouteCmdKind::Set => {}
         }
     }
 
-    info!("Saved {} captured packets to out.pcap", packets_captured);
+    log::info!("Saved {} captured packets to out.pcap", packets_captured);
     //`main_session` and `adapter` are both dropped
 }
