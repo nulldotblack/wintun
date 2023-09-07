@@ -14,6 +14,7 @@ pub struct OutOfRangeData<T> {
 pub enum ApiError {
     CapacityNotPowerOfTwo(u32),
     CapacityOutOfRange(OutOfRangeData<u32>),
+    SysError(String),
 }
 
 impl Display for ApiError {
@@ -29,6 +30,7 @@ impl Display for ApiError {
             ApiError::CapacityNotPowerOfTwo(cap) => {
                 write!(f, "Capacity {} is not a power of two", cap)
             }
+            ApiError::SysError(msg) => write!(f, "System error: {}", msg),
         }
     }
 }

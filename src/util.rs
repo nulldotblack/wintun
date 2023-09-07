@@ -1,6 +1,6 @@
 use winapi::{
     shared::ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
-    um::{winbase, winnt::MAKELANGID},
+    um::{errhandlingapi, winbase, winnt::MAKELANGID},
 };
 
 use std::mem::MaybeUninit;
@@ -46,6 +46,11 @@ pub fn get_error_message(err_code: u32) -> String {
     )
 }
 
+pub(crate) fn get_last_error() -> String {
+    let err_code = unsafe { errhandlingapi::GetLastError() };
+    get_error_message(err_code)
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Version {
     pub major: u16,
@@ -53,14 +58,15 @@ pub struct Version {
 }
 
 /// Returns the major and minor version of the wintun driver
-pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, ()> {
+pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, crate::ApiError> {
     let version = unsafe { wintun.WintunGetRunningDriverVersion() };
     if version == 0 {
-        Err(())
+        Err(crate::ApiError::SysError(get_last_error()))
     } else {
+        let v = version.to_be_bytes();
         Ok(Version {
-            major: ((version >> 16) & 0xFF) as u16,
-            minor: (version & 0xFF) as u16,
+            major: u16::from_be_bytes([v[0], v[1]]),
+            minor: u16::from_be_bytes([v[2], v[3]]),
         })
     }
 }
