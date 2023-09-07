@@ -7,7 +7,7 @@ static RUNNING: AtomicBool = AtomicBool::new(true);
 
 fn main() {
     env_logger::init();
-    let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
+    let wintun = wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll")
         .expect("Failed to load wintun dll");
 
     let version = wintun::get_running_driver_version(&wintun);

@@ -11,6 +11,7 @@ pub enum Error {
     CapacityNotPowerOfTwo(u32),
     CapacityOutOfRange(OutOfRangeData<u32>),
     SysError(String),
+    LibLoading(libloading::Error),
 }
 
 impl From<String> for Error {
@@ -22,6 +23,12 @@ impl From<String> for Error {
 impl From<&str> for Error {
     fn from(value: &str) -> Self {
         Error::SysError(value.to_string())
+    }
+}
+
+impl From<libloading::Error> for Error {
+    fn from(value: libloading::Error) -> Self {
+        Error::LibLoading(value)
     }
 }
 
@@ -39,8 +46,11 @@ impl std::fmt::Display for Error {
                 write!(f, "Capacity {} is not a power of two", cap)
             }
             Error::SysError(msg) => write!(f, "System error: {}", msg),
+            Error::LibLoading(err) => write!(f, "Library loading error: {}", err),
         }
     }
 }
 
 impl std::error::Error for Error {}
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;

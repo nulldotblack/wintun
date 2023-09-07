@@ -94,7 +94,7 @@ mod util;
 mod wintun_raw;
 
 pub use crate::adapter::Adapter;
-pub use crate::error::{Error, OutOfRangeData};
+pub use crate::error::{Error, OutOfRangeData, Result};
 pub use crate::log::{default_logger, reset_logger, set_logger};
 pub use crate::packet::Packet;
 pub use crate::session::Session;
@@ -129,7 +129,7 @@ use std::sync::Arc;
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load() -> Result<Wintun, libloading::Error> {
+pub fn load() -> Result<Wintun, Error> {
     load_from_path("wintun")
 }
 
@@ -145,11 +145,11 @@ pub unsafe fn load() -> Result<Wintun, libloading::Error> {
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, libloading::Error>
+pub fn load_from_path<P>(path: P) -> Result<Wintun, Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    Ok(Arc::new(wintun_raw::wintun::new(path)?))
+    unsafe { Ok(Arc::new(wintun_raw::wintun::new(path)?)) }
 }
 
 /// Attempts to load the Wintun library from an existing [`libloading::Library`].
@@ -162,9 +162,9 @@ where
 /// is inherently unsafe.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading::Library::new`]
-pub unsafe fn load_from_library<L>(library: L) -> Result<Wintun, libloading::Error>
+pub fn load_from_library<L>(library: L) -> Result<Wintun, Error>
 where
     L: Into<libloading::Library>,
 {
-    Ok(Arc::new(wintun_raw::wintun::from_library(library)?))
+    unsafe { Ok(Arc::new(wintun_raw::wintun::from_library(library)?)) }
 }

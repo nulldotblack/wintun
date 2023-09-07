@@ -100,7 +100,7 @@ impl RouteCmd {
 fn main() {
     env_logger::init();
 
-    let wintun = unsafe { wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll") }
+    let wintun = wintun::load_from_path("examples/wintun/bin/amd64/wintun.dll")
         .expect("Failed to load wintun dll");
 
     let adapter =
