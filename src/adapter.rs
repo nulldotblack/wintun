@@ -150,7 +150,7 @@ impl Adapter {
     }
 
     /// Delete an adapter, consuming it in the process
-    pub fn delete(self) -> Result<(), ()> {
+    pub fn delete(self) -> Result<(), crate::ApiError> {
         //Dropping an adapter closes it
         drop(self);
         // Return a result here so that if later the API changes to be fallible, we can support it
