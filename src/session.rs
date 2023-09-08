@@ -3,16 +3,11 @@ use crate::{
     util::{self, UnsafeHandle},
     wintun_raw, Adapter, Error, Wintun,
 };
-use once_cell::sync::OnceCell;
-use winapi::shared::winerror;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::handleapi;
-use winapi::um::synchapi;
-use winapi::um::winbase;
-use winapi::um::winnt;
-
-use std::sync::Arc;
-use std::{ptr, slice};
+use std::{ptr, slice, sync::Arc, sync::OnceLock};
+use winapi::{
+    shared::winerror,
+    um::{errhandlingapi::GetLastError, handleapi, synchapi, winbase, winnt},
+};
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_session_handle>
 pub struct Session {
@@ -24,7 +19,7 @@ pub struct Session {
 
     /// Windows event handle that is signaled by the wintun driver when data becomes available to
     /// read
-    pub(crate) read_event: OnceCell<UnsafeHandle<winnt::HANDLE>>,
+    pub(crate) read_event: OnceLock<UnsafeHandle<winnt::HANDLE>>,
 
     /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
     /// readers to exit
@@ -48,7 +43,7 @@ impl Session {
                 .WintunAllocateSendPacket(self.session.0, size as u32)
         };
         if ptr.is_null() {
-            Err(Error::SysError(util::get_last_error()))
+            Err(Error::from(util::get_last_error()))
         } else {
             Ok(packet::Packet {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -90,7 +85,7 @@ impl Session {
             if last_error == winerror::ERROR_NO_MORE_ITEMS {
                 Ok(None)
             } else {
-                Err(Error::SysError(util::get_last_error()))
+                Err(Error::from(util::get_last_error()))
             }
         } else {
             Ok(Some(packet::Packet {
@@ -144,14 +139,14 @@ impl Session {
                 )
             };
             match result {
-                winbase::WAIT_FAILED => return Err(Error::SysError(util::get_last_error())),
+                winbase::WAIT_FAILED => return Err(Error::from(util::get_last_error())),
                 _ => {
                     if result == winbase::WAIT_OBJECT_0 {
                         //We have data!
                         continue;
                     } else if result == winbase::WAIT_OBJECT_0 + 1 {
                         //Shutdown event triggered
-                        return Err(Error::SysError(util::get_last_error()));
+                        return Err(Error::from(util::get_last_error()));
                     }
                 }
             }

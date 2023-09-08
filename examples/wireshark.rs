@@ -2,57 +2,24 @@
 //! writes all routed packets to a pcap file for analysis in Wireshark
 //! Must be run as Administrator
 
-use std::fs::File;
-use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
-use std::{mem::MaybeUninit, ptr};
-
-use winapi::{
-    shared::{
-        ipmib,
-        ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
-        winerror, ws2def, ws2ipdef,
-    },
-    um::{iphlpapi, winbase, winnt::MAKELANGID},
-};
-
 use packet::Builder;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    fs::File,
+    net::IpAddr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::{SystemTime, UNIX_EPOCH},
+};
 use subprocess::{Popen, PopenConfig, Redirection};
-use widestring::U16Str;
+use winapi::{
+    shared::{ipmib, winerror, ws2def, ws2ipdef},
+    um::iphlpapi,
+};
+use wintun::get_error_message;
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
-
-fn get_error_message(err_code: u32) -> String {
-    const LEN: usize = 256;
-    let mut buf = MaybeUninit::<[u16; LEN]>::uninit();
-
-    //SAFETY: name is a allocated on the stack above therefore it must be valid, non-null and
-    //aligned for u16
-    let first = unsafe { *buf.as_mut_ptr() }.as_mut_ptr();
-    //Write default null terminator in case WintunGetAdapterName leaves name unchanged
-    unsafe { first.write(0u16) };
-    let chars_written = unsafe {
-        winbase::FormatMessageW(
-            winbase::FORMAT_MESSAGE_FROM_SYSTEM | winbase::FORMAT_MESSAGE_IGNORE_INSERTS,
-            ptr::null(),
-            err_code,
-            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) as u32,
-            first,
-            LEN as u32,
-            ptr::null_mut(),
-        )
-    };
-
-    //SAFETY: first is a valid, non-null, aligned, pointer
-    format!(
-        "{} ({})",
-        unsafe { U16Str::from_ptr(first, chars_written as usize) }.to_string_lossy(),
-        err_code
-    )
-}
 
 /// Converts a rust ip addr to a SOCKADDR_INET
 fn _ip_addr_to_win_addr(addr: IpAddr) -> ws2ipdef::SOCKADDR_INET {

@@ -17,8 +17,7 @@
 //!
 //! //Must be run as Administrator because we create network adapters
 //! //Load the wintun dll file so that we can call the underlying C functions
-//! //Unsafe because we are loading an arbitrary dll file
-//! let wintun = unsafe { wintun::load_from_path("path/to/wintun.dll") }
+//! let wintun = wintun::load_from_path("path/to/wintun.dll")
 //!     .expect("Failed to load wintun dll");
 //!
 //! //Try to open an adapter with the name "Demo"
@@ -93,12 +92,14 @@ mod util;
 )]
 mod wintun_raw;
 
-pub use crate::adapter::Adapter;
-pub use crate::error::{Error, OutOfRangeData, Result};
-pub use crate::log::{default_logger, reset_logger, set_logger};
-pub use crate::packet::Packet;
-pub use crate::session::Session;
-pub use crate::util::get_running_driver_version;
+pub use crate::{
+    adapter::Adapter,
+    error::{Error, OutOfRangeData, Result},
+    log::{default_logger, reset_logger, set_logger},
+    packet::Packet,
+    session::Session,
+    util::{get_error_message, get_running_driver_version},
+};
 
 // TODO: Get bindgen to scrape these from the `wintun.h`
 // We need to make sure these stay up to date

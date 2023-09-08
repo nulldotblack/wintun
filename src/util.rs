@@ -1,12 +1,9 @@
+use std::{mem::MaybeUninit, ptr};
+use widestring::U16Str;
 use winapi::{
     shared::ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
     um::{errhandlingapi, winbase, winnt::MAKELANGID},
 };
-
-use std::mem::MaybeUninit;
-use std::ptr;
-
-use widestring::U16Str;
 
 /// A wrapper struct that allows a type to be Send and Sync
 pub(crate) struct UnsafeHandle<T>(pub T);
@@ -39,11 +36,8 @@ pub fn get_error_message(err_code: u32) -> String {
     };
 
     //SAFETY: first is a valid, non-null, aligned, pointer
-    format!(
-        "{} ({})",
-        unsafe { U16Str::from_ptr(first, chars_written as usize) }.to_string_lossy(),
-        err_code
-    )
+    let first = unsafe { U16Str::from_ptr(first, chars_written as usize) }.to_string_lossy();
+    format!("{} ({})", first, err_code)
 }
 
 pub(crate) fn get_last_error() -> String {

@@ -1,5 +1,4 @@
 use crate::session;
-
 use std::sync::Arc;
 
 pub(crate) enum Kind {

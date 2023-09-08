@@ -10,12 +10,9 @@ use crate::{
     wintun_raw, Wintun,
 };
 use itertools::Itertools;
-use once_cell::sync::OnceCell;
 use rand::Rng;
-use std::ptr;
-use std::sync::Arc;
-use widestring::U16CStr;
-use widestring::U16CString;
+use std::{ptr, sync::Arc, sync::OnceLock};
+use widestring::{U16CStr, U16CString};
 use winapi::{
     shared::winerror,
     um::{ipexport, iphlpapi, synchapi},
@@ -176,7 +173,7 @@ impl Adapter {
             Ok(session::Session {
                 session: UnsafeHandle(result),
                 wintun: self.wintun.clone(),
-                read_event: OnceCell::new(),
+                read_event: OnceLock::new(),
                 shutdown_event: unsafe {
                     //SAFETY: We follow the contract required by CreateEventA. See MSDN
                     //(the pointers are allowed to be null, and 0 is okay for the others)
