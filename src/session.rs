@@ -146,7 +146,8 @@ impl Session {
                         continue;
                     } else if result == winbase::WAIT_OBJECT_0 + 1 {
                         //Shutdown event triggered
-                        return Err(Error::from(util::get_last_error()));
+                        let err = format!("Session {:?} shuting down", self.session);
+                        return Err(Error::from(err));
                     }
                 }
             }

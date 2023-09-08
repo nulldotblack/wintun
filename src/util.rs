@@ -6,6 +6,7 @@ use winapi::{
 };
 
 /// A wrapper struct that allows a type to be Send and Sync
+#[derive(Copy, Clone, Debug)]
 pub(crate) struct UnsafeHandle<T>(pub T);
 
 /// We never read from the pointer. It only serves as a handle we pass to the kernel or C code that

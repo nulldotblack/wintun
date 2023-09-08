@@ -26,6 +26,11 @@ targets = [
 panic_on_unsent_packets = []
 
 [dependencies]
+itertools = "0.11"
+libloading = "0.8"
+log = "0.4"
+rand = "0.8"
+widestring = "1.0"
 winapi = { version = "0.3", features = [
     "synchapi",
     "winbase",
@@ -34,20 +39,15 @@ winapi = { version = "0.3", features = [
     "iphlpapi",
     "handleapi",
 ] }
-widestring = "1.0"
-libloading = "0.8"
-log = "0.4"
-rand = "0.8.3"
-itertools = "0.11"
 
 [dev-dependencies]
 env_logger = "0.10"
+packet = "0.1"
+pcap-file = "2.0"
+subprocess = "0.2"
 winapi = { version = "0.3", features = [
     "netioapi",
     "iptypes",
     "iphlpapi",
     "nldef",
 ] }
-packet = "0.1.4"
-pcap-file = "2.0"
-subprocess = "0.2.7"
