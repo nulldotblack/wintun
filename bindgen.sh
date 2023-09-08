@@ -4,4 +4,5 @@ bindgen \
 --allowlist-type "WINTUN_.*" \
 --dynamic-loading wintun \
 --dynamic-link-require-all \
-wintun/wintun_functions.h > src/wintun_raw.rs
+wintun/wintun_functions.h > src/wintun_raw.rs \
+-- --target=i686-pc-windows-msvc
