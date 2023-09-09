@@ -161,10 +161,10 @@ pub(crate) fn get_interface_info() -> Result<Vec<(u32, String)>, Error> {
     Ok(v)
 }
 
-#[inline]
 #[allow(non_snake_case)]
+#[inline]
 fn MAKELANGID(p: u32, s: u32) -> u32 {
-    (((s as u16) as u32) << 10) | (p as u16) as u32
+    ((s & 0x0000ffff) << 10) | (p & 0x0000ffff)
 }
 
 /// Returns a a human readable error message from a windows error code
