@@ -25,6 +25,12 @@ pub enum Error {
 
     #[error("windows::core::Error {0}")]
     WindowsCore(#[from] windows::core::Error),
+
+    #[error("FromUtf16Error {0}")]
+    FromUtf16Error(#[from] std::string::FromUtf16Error),
+
+    #[error("Utf8Error {0}")]
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 impl From<String> for Error {

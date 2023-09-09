@@ -122,14 +122,20 @@ impl Adapter {
         } else {
             let mut guid = None;
             util::get_adapters_addresses(|address: IP_ADAPTER_ADDRESSES_LH| {
-                let adapter: &CStr = unsafe { CStr::from_ptr(address.AdapterName.0 as *const i8) };
-                let adapter: &str = adapter.to_str().unwrap();
-
                 let frindly_name = PCWSTR(address.FriendlyName.0 as *const u16);
-                let frindly_name = unsafe { frindly_name.to_string().unwrap() };
+                let frindly_name = unsafe { frindly_name.to_string()? };
                 if frindly_name == name {
-                    guid = Some(GUID::from(&adapter[1..37]));
+                    let adapter: &str =
+                        unsafe { CStr::from_ptr(address.AdapterName.0 as *const i8).to_str()? };
+                    let err = format!("Failed to find GUID inside adapter name: {}", adapter);
+                    let adapter = adapter
+                        .split('{')
+                        .nth(1)
+                        .and_then(|guid| guid.split('}').next())
+                        .ok_or(err)?;
+                    guid = Some(GUID::from(adapter));
                 }
+                Ok(())
             })?;
             let guid = guid.ok_or("Unable to find matching GUID")?.to_u128();
             Ok(Arc::new(Adapter {

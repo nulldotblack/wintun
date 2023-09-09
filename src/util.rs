@@ -1,8 +1,11 @@
 use crate::Error;
 use std::{mem::MaybeUninit, ptr};
-use widestring::{U16CStr, U16Str};
+use widestring::U16Str;
 use windows::{
-    core::imp::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS},
+    core::{
+        imp::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS},
+        PCWSTR,
+    },
     Win32::{
         Foundation::{
             GetLastError, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, NO_ERROR, WIN32_ERROR,
@@ -27,7 +30,7 @@ unsafe impl<T> Sync for UnsafeHandle<T> {}
 
 pub(crate) fn get_adapters_addresses<F>(mut callback: F) -> Result<(), Error>
 where
-    F: FnMut(IP_ADAPTER_ADDRESSES_LH),
+    F: FnMut(IP_ADAPTER_ADDRESSES_LH) -> Result<(), Error>,
 {
     let mut size = 0;
     let flags = GAA_FLAG_INCLUDE_PREFIX;
@@ -45,13 +48,8 @@ where
 
     // Make a second call to GetAdaptersAddresses to get the actual data we want
     let result = unsafe {
-        GetAdaptersAddresses(
-            family,
-            flags,
-            None,
-            Some(addresses.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES_LH),
-            &mut size,
-        )
+        let addr = Some(addresses.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES_LH);
+        GetAdaptersAddresses(family, flags, None, addr, &mut size)
     };
 
     WIN32_ERROR(result).ok()?;
@@ -60,14 +58,17 @@ where
     let mut current_addresses = addresses.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
     while !current_addresses.is_null() {
         unsafe {
-            callback(*current_addresses);
+            callback(*current_addresses)?;
             current_addresses = (*current_addresses).Next;
         }
     }
     Ok(())
 }
 
-fn get_interface_info_sys() -> Result<Vec<IP_ADAPTER_INDEX_MAP>, Error> {
+fn get_interface_info_sys<F>(mut callback: F) -> Result<(), Error>
+where
+    F: FnMut(IP_ADAPTER_INDEX_MAP) -> Result<(), Error>,
+{
     let mut buf_len: u32 = 0;
     //First figure out the size of the buffer needed to store the adapter info
     //SAFETY: We are upholding the contract of GetInterfaceInfo. buf_len is a valid pointer to
@@ -137,32 +138,26 @@ fn get_interface_info_sys() -> Result<Vec<IP_ADAPTER_INDEX_MAP>, Error> {
     //     IP_ADAPTER_INDEX_MAP structs stays within the bounds of buf's buffer
     let interfaces = unsafe { std::slice::from_raw_parts(first_adapter, adapter_count as usize) };
 
-    let mut v = Vec::with_capacity(adapter_count as usize);
     for interface in interfaces {
-        v.push(*interface);
+        callback(*interface)?;
     }
-    Ok(v)
+    Ok(())
 }
 
 pub(crate) fn get_interface_info() -> Result<Vec<(u32, String)>, Error> {
-    let interfaces = get_interface_info_sys()?;
-    let mut v = Vec::with_capacity(interfaces.len());
-    for interface in interfaces {
-        let name =
-            unsafe { U16CStr::from_ptr_str(&interface.Name as *const u16).to_string_lossy() };
-        //Nam is something like: \DEVICE\TCPIP_{29C47F55-C7BD-433A-8BF7-408DFD3B3390}
-        //where the GUID is the {29C4...90}, separated by dashes
-        let open = name.chars().position(|c| c == '{').ok_or(format!(
-            "Failed to find {{ character inside adapter name: {}",
-            name
-        ))?;
-        let close = name.chars().position(|c| c == '}').ok_or(format!(
-            "Failed to find }} character inside adapter name: {}",
-            name
-        ))?;
-        // v.push((interface.Index, name[open..close]));
-        v.push((interface.Index, name[open..=close].to_string()));
-    }
+    let mut v = vec![];
+    get_interface_info_sys(|interface| {
+        let name = unsafe { PCWSTR(&interface.Name as *const u16).to_string()? };
+        // Nam is something like: \DEVICE\TCPIP_{29C47F55-C7BD-433A-8BF7-408DFD3B3390}
+        // where the GUID is the {29C4...90}, separated by dashes
+        let guid = name
+            .split('{')
+            .nth(1)
+            .and_then(|s| s.split('}').next())
+            .ok_or(format!("Failed to find GUID inside adapter name: {}", name))?;
+        v.push((interface.Index, guid.to_string()));
+        Ok(())
+    })?;
     Ok(v)
 }
 
