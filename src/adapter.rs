@@ -12,11 +12,8 @@ use crate::{
 use itertools::Itertools;
 use rand::Rng;
 use std::{ptr, sync::Arc, sync::OnceLock};
-use widestring::{U16CStr, U16CString};
-use winapi::{
-    shared::winerror,
-    um::{ipexport, iphlpapi, synchapi},
-};
+use widestring::U16CString;
+use winapi::um::synchapi;
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
 pub struct Adapter {
@@ -25,7 +22,7 @@ pub struct Adapter {
     guid: u128,
 }
 
-fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, Error> {
+fn encode_to_utf16(string: &str, max_characters: usize) -> Result<U16CString, Error> {
     let utf16 = U16CString::from_str(string).map_err(|e| Error::from(format!("{e}")))?;
     if utf16.len() >= max_characters {
         //max_characters is the maximum number of characters including the null terminator. And .len() measures the
@@ -44,14 +41,6 @@ fn encode_utf16(string: &str, max_characters: usize) -> Result<U16CString, Error
     }
 }
 
-fn encode_pool_name(name: &str) -> Result<U16CString, Error> {
-    encode_utf16(name, crate::MAX_POOL)
-}
-
-fn encode_adapter_name(name: &str) -> Result<U16CString, Error> {
-    encode_utf16(name, crate::MAX_POOL)
-}
-
 fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> u64 {
     let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
     unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
@@ -61,19 +50,19 @@ fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE)
 impl Adapter {
     //TODO: Call get last error for error information on failure and improve error types
 
-    /// Creates a new wintun adapter inside the pool `pool` with name `name`
+    /// Creates a new wintun adapter inside the name `name` with tunnel type `tunnel_type`
     ///
     /// Optionally a GUID can be specified that will become the GUID of this adapter once created.
     /// Adapters obtained via this function will be able to return their adapter index via
     /// [`Adapter::get_adapter_index`]
     pub fn create(
         wintun: &Wintun,
-        pool: &str,
         name: &str,
+        tunnel_type: &str,
         guid: Option<u128>,
     ) -> Result<Arc<Adapter>, Error> {
-        let pool_utf16 = encode_pool_name(pool)?;
-        let name_utf16 = encode_adapter_name(name)?;
+        let name_utf16 = encode_to_utf16(name, crate::MAX_POOL)?;
+        let tunnel_type_utf16 = encode_to_utf16(tunnel_type, crate::MAX_POOL)?;
 
         let guid = match guid {
             Some(guid) => guid,
@@ -99,7 +88,7 @@ impl Adapter {
         //pointers, and all the strings are correct null terminated UTF-16. This safety rationale
         //applies for all Wintun* functions below
         let result = unsafe {
-            wintun.WintunCreateAdapter(pool_utf16.as_ptr(), name_utf16.as_ptr(), guid_ptr)
+            wintun.WintunCreateAdapter(name_utf16.as_ptr(), tunnel_type_utf16.as_ptr(), guid_ptr)
         };
 
         if result.is_null() {
@@ -122,7 +111,7 @@ impl Adapter {
     /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
     /// or via the Win32 API, so PR's that solve this issue are always welcome!
     pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
-        let name_utf16 = encode_adapter_name(name)?;
+        let name_utf16 = encode_to_utf16(name, crate::MAX_POOL)?;
 
         crate::log::set_default_logger_if_unset(wintun);
 
@@ -197,91 +186,10 @@ impl Adapter {
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, Error> {
-        let mut buf_len: u32 = 0;
-        //First figure out the size of the buffer needed to store the adapter info
-        //SAFETY: We are upholding the contract of GetInterfaceInfo. buf_len is a valid pointer to
-        //stack memory
-        let result =
-            unsafe { iphlpapi::GetInterfaceInfo(std::ptr::null_mut(), &mut buf_len as *mut u32) };
-        if result != winerror::NO_ERROR && result != winerror::ERROR_INSUFFICIENT_BUFFER {
-            let err_msg = util::get_error_message(result);
-            log::error!("Failed to get interface info: {}", err_msg);
-            return Err(format!("GetInterfaceInfo failed: {}", err_msg).into());
-        }
+        let interfaces = util::get_interface_info()?;
 
-        //Allocate a buffer of the requested size
-        //IP_INTERFACE_INFO must be aligned by at least 4 byte boundaries so use u32 as the
-        //underlying data storage type
-        let buf_elements = buf_len as usize / std::mem::size_of::<u32>() + 1;
-        //Round up incase integer division truncated a byte that filled a partial element
-        let mut buf: Vec<u32> = vec![0; buf_elements];
-
-        let buf_bytes = buf.len() * std::mem::size_of::<u32>();
-        assert!(buf_bytes >= buf_len as usize);
-
-        //SAFETY:
-        //
-        //  1. We are upholding the contract of GetInterfaceInfo.
-        //  2. `final_buf_len` is an aligned, valid pointer to stack memory
-        //  3. buf is a valid, non-null pointer to at least `buf_len` bytes of heap memory,
-        //     aligned to at least 4 byte boundaries
-        //
-        //Get the info
-        let mut final_buf_len: u32 = buf_len;
-        let result = unsafe {
-            iphlpapi::GetInterfaceInfo(
-                buf.as_mut_ptr() as *mut ipexport::IP_INTERFACE_INFO,
-                &mut final_buf_len as *mut u32,
-            )
-        };
-        if result != winerror::NO_ERROR {
-            let err_msg = util::get_error_message(result);
-            //TODO: maybe over allocate the buffer in case the needed size changes between the two
-            //calls to GetInterfaceInfo if another adapter is added
-            log::error!(
-                "Failed to get interface info a second time: {}. Original len: {}, final len: {}",
-                err_msg,
-                buf_len,
-                final_buf_len
-            );
-            return Err(format!("GetInterfaceInfo failed a second time: {}", err_msg).into());
-        }
-        let info = buf.as_mut_ptr() as *const ipexport::IP_INTERFACE_INFO;
-        //SAFETY:
-        // info is a valid, non-null, at least 4 byte aligned pointer obtained from
-        // Vec::with_capacity that is readable for up to `buf_len` bytes which is guaranteed to be
-        // larger than on IP_INTERFACE_INFO struct as the kernel would never ask for less memory then
-        // what it will write. The largest type inside IP_INTERFACE_INFO is a u32 therefore
-        // a painter to IP_INTERFACE_INFO requires an alignment of at leant 4 bytes, which
-        // Vec<u32>::as_mut_ptr() provides
-        let adapter_base = unsafe { &*info };
-        let adapter_count = adapter_base.NumAdapters;
-        let first_adapter = &adapter_base.Adapter as *const ipexport::IP_ADAPTER_INDEX_MAP;
-
-        // SAFETY:
-        //  1. first_adapter is a valid, non null pointer, aligned to at least 4 byte boundaries
-        //     obtained from moving a multiple of 4 offset into the buf given by Vec::with_capacity.
-        //  2. We gave GetInterfaceInfo a buffer of at least least `buf_len` bytes to work with and it
-        //     succeeded in writing the adapter information within the bounds of that buffer, otherwise
-        //     it would've failed. Because the operation succeeded, we know that reading n=NumAdapters
-        //     IP_ADAPTER_INDEX_MAP structs stays within the bounds of buf's buffer
-        let interfaces =
-            unsafe { std::slice::from_raw_parts(first_adapter, adapter_count as usize) };
-
-        for interface in interfaces {
-            let name =
-                unsafe { U16CStr::from_ptr_str(&interface.Name as *const u16).to_string_lossy() };
-            //Nam is something like: \DEVICE\TCPIP_{29C47F55-C7BD-433A-8BF7-408DFD3B3390}
-            //where the GUID is the {29C4...90}, separated by dashes
-            let open = name.chars().position(|c| c == '{').ok_or(format!(
-                "Failed to find {{ character inside adapter name: {}",
-                name
-            ))?;
-            let close = name.chars().position(|c| c == '}').ok_or(format!(
-                "Failed to find }} character inside adapter name: {}",
-                name
-            ))?;
-            let digits: Vec<u8> = name[open..close]
+        for (index, name) in interfaces {
+            let digits: Vec<u8> = name
                 .chars()
                 .filter(|c| c.is_ascii_hexdigit())
                 .chunks(2)
@@ -313,7 +221,7 @@ impl Adapter {
                 }
             }
             if match_count == digits.len() {
-                return Ok(interface.Index);
+                return Ok(index);
             }
         }
         Err("Unable to find matching GUID".into())

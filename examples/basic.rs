@@ -15,7 +15,7 @@ fn main() {
 
     let adapter = match wintun::Adapter::open(&wintun, "Demo") {
         Ok(a) => a,
-        Err(_) => wintun::Adapter::create(&wintun, "Example", "Demo", None)
+        Err(_) => wintun::Adapter::create(&wintun, "Demo", "Example", None)
             .expect("Failed to create wintun adapter!"),
     };
 

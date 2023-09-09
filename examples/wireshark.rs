@@ -77,7 +77,7 @@ fn main() {
                 a
             }
             Err(_) => {
-                match wintun::Adapter::create(&wintun, "Example", "Demo", None) {
+                match wintun::Adapter::create(&wintun,"Demo", "Example",  None) {
                 Ok(d) => {
                     log::info!("Created adapter successfully! ");
                     d
