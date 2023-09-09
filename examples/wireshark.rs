@@ -13,25 +13,26 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use subprocess::{Popen, PopenConfig, Redirection};
-use winapi::{
-    shared::{ipmib, winerror, ws2def, ws2ipdef},
-    um::iphlpapi,
+use windows::Win32::{
+    Foundation::NO_ERROR,
+    NetworkManagement::IpHelper::{GetBestRoute, MIB_IPFORWARDROW},
+    Networking::WinSock::{AF_INET, AF_INET6, SOCKADDR_INET},
 };
 use wintun::get_error_message;
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
 /// Converts a rust ip addr to a SOCKADDR_INET
-fn _ip_addr_to_win_addr(addr: IpAddr) -> ws2ipdef::SOCKADDR_INET {
-    let mut result: ws2ipdef::SOCKADDR_INET = unsafe { std::mem::zeroed() };
+fn _ip_addr_to_win_addr(addr: IpAddr) -> SOCKADDR_INET {
+    let mut result: SOCKADDR_INET = unsafe { std::mem::zeroed() };
     match addr {
         IpAddr::V4(v4) => {
-            *unsafe { result.si_family_mut() } = ws2def::AF_INET as u16;
-            unsafe { result.Ipv4_mut().sin_addr = std::mem::transmute(v4.octets()) };
+            result.si_family = AF_INET;
+            result.Ipv4.sin_addr = v4.into();
         }
         IpAddr::V6(v6) => {
-            *unsafe { result.si_family_mut() } = ws2def::AF_INET6 as u16;
-            unsafe { result.Ipv6_mut().sin6_addr = std::mem::transmute(v6.segments()) };
+            result.si_family = AF_INET6;
+            result.Ipv6.sin6_addr = v6.into();
         }
     }
 
@@ -100,13 +101,13 @@ fn main() {
     //Get the ip address of the default gateway so we can re-route all traffic to us, then the
     //gateway
     let gateway = unsafe {
-        let mut row: ipmib::MIB_IPFORWARDROW = std::mem::zeroed();
-        let result = iphlpapi::GetBestRoute(
+        let mut row: MIB_IPFORWARDROW = std::mem::zeroed();
+        let result = GetBestRoute(
             u32::from_be_bytes([1, 1, 1, 1]),
             0,
-            &mut row as *mut ipmib::MIB_IPFORWARDROW,
+            &mut row as *mut MIB_IPFORWARDROW,
         );
-        if result != winerror::NO_ERROR {
+        if result != NO_ERROR.0 {
             log::error!("Failed to get best route: {}", get_error_message(result));
             return;
         }
@@ -229,7 +230,7 @@ fn main() {
                     writer.write_packet(&packet).unwrap();
                 }
                 Err(err) => {
-                    log::error!("Got error while reading: {:?}", err);
+                    log::error!("Got error while reading: {}", err);
                     break;
                 }
             }

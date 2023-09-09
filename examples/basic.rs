@@ -36,7 +36,7 @@ fn main() {
                         &bytes[0..(20.min(bytes.len()))]
                     );
                 }
-                Err(_) => println!("Got error while reading packet"),
+                Err(err) => println!("Got error while reading packet {err}"),
             }
         }
     });

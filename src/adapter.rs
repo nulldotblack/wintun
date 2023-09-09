@@ -13,7 +13,10 @@ use itertools::Itertools;
 use rand::Rng;
 use std::{ptr, sync::Arc, sync::OnceLock};
 use widestring::U16CString;
-use winapi::um::synchapi;
+use windows::{
+    core::PCSTR,
+    Win32::{Foundation::FALSE, System::Threading::CreateEventA},
+};
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
 pub struct Adapter {
@@ -166,12 +169,7 @@ impl Adapter {
                 shutdown_event: unsafe {
                     //SAFETY: We follow the contract required by CreateEventA. See MSDN
                     //(the pointers are allowed to be null, and 0 is okay for the others)
-                    UnsafeHandle(synchapi::CreateEventA(
-                        std::ptr::null_mut(),
-                        0,
-                        0,
-                        std::ptr::null_mut(),
-                    ))
+                    CreateEventA(None, FALSE, FALSE, PCSTR(std::ptr::null()))?
                 },
                 adapter: Arc::clone(self),
             })

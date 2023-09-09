@@ -1,12 +1,13 @@
 use crate::Error;
 use std::{mem::MaybeUninit, ptr};
 use widestring::{U16CStr, U16Str};
-use winapi::{
-    shared::{
-        ntdef::{LANG_NEUTRAL, SUBLANG_DEFAULT},
-        winerror,
+use windows::{
+    core::imp::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS},
+    Win32::{
+        Foundation::{GetLastError, ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
+        NetworkManagement::IpHelper::{GetInterfaceInfo, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO},
+        System::SystemServices::{LANG_NEUTRAL, SUBLANG_DEFAULT},
     },
-    um::{errhandlingapi, ipexport, iphlpapi, winbase, winnt::MAKELANGID},
 };
 
 /// A wrapper struct that allows a type to be Send and Sync
@@ -18,14 +19,13 @@ pub(crate) struct UnsafeHandle<T>(pub T);
 unsafe impl<T> Send for UnsafeHandle<T> {}
 unsafe impl<T> Sync for UnsafeHandle<T> {}
 
-fn get_interface_info_sys() -> Result<Vec<ipexport::IP_ADAPTER_INDEX_MAP>, Error> {
+fn get_interface_info_sys() -> Result<Vec<IP_ADAPTER_INDEX_MAP>, Error> {
     let mut buf_len: u32 = 0;
     //First figure out the size of the buffer needed to store the adapter info
     //SAFETY: We are upholding the contract of GetInterfaceInfo. buf_len is a valid pointer to
     //stack memory
-    let result =
-        unsafe { iphlpapi::GetInterfaceInfo(std::ptr::null_mut(), &mut buf_len as *mut u32) };
-    if result != winerror::NO_ERROR && result != winerror::ERROR_INSUFFICIENT_BUFFER {
+    let result = unsafe { GetInterfaceInfo(None, &mut buf_len as *mut u32) };
+    if result != NO_ERROR.0 && result != ERROR_INSUFFICIENT_BUFFER.0 {
         let err_msg = get_error_message(result);
         log::error!("Failed to get interface info: {}", err_msg);
         return Err(format!("GetInterfaceInfo failed: {}", err_msg).into());
@@ -51,12 +51,12 @@ fn get_interface_info_sys() -> Result<Vec<ipexport::IP_ADAPTER_INDEX_MAP>, Error
     //Get the info
     let mut final_buf_len: u32 = buf_len;
     let result = unsafe {
-        iphlpapi::GetInterfaceInfo(
-            buf.as_mut_ptr() as *mut ipexport::IP_INTERFACE_INFO,
+        GetInterfaceInfo(
+            Some(buf.as_mut_ptr() as *mut IP_INTERFACE_INFO),
             &mut final_buf_len as *mut u32,
         )
     };
-    if result != winerror::NO_ERROR {
+    if result != NO_ERROR.0 {
         let err_msg = get_error_message(result);
         //TODO: maybe over allocate the buffer in case the needed size changes between the two
         //calls to GetInterfaceInfo if another adapter is added
@@ -68,7 +68,7 @@ fn get_interface_info_sys() -> Result<Vec<ipexport::IP_ADAPTER_INDEX_MAP>, Error
         );
         return Err(format!("GetInterfaceInfo failed a second time: {}", err_msg).into());
     }
-    let info = buf.as_mut_ptr() as *const ipexport::IP_INTERFACE_INFO;
+    let info = buf.as_mut_ptr() as *const IP_INTERFACE_INFO;
     //SAFETY:
     // info is a valid, non-null, at least 4 byte aligned pointer obtained from
     // Vec::with_capacity that is readable for up to `buf_len` bytes which is guaranteed to be
@@ -78,7 +78,7 @@ fn get_interface_info_sys() -> Result<Vec<ipexport::IP_ADAPTER_INDEX_MAP>, Error
     // Vec<u32>::as_mut_ptr() provides
     let adapter_base = unsafe { &*info };
     let adapter_count = adapter_base.NumAdapters;
-    let first_adapter = &adapter_base.Adapter as *const ipexport::IP_ADAPTER_INDEX_MAP;
+    let first_adapter = &adapter_base.Adapter as *const IP_ADAPTER_INDEX_MAP;
 
     // SAFETY:
     //  1. first_adapter is a valid, non null pointer, aligned to at least 4 byte boundaries
@@ -118,6 +118,12 @@ pub(crate) fn get_interface_info() -> Result<Vec<(u32, String)>, Error> {
     Ok(v)
 }
 
+#[inline]
+#[allow(non_snake_case)]
+fn MAKELANGID(p: u32, s: u32) -> u32 {
+    (((s as u16) as u32) << 10) | (p as u16) as u32
+}
+
 /// Returns a a human readable error message from a windows error code
 pub fn get_error_message(err_code: u32) -> String {
     const LEN: usize = 256;
@@ -129,11 +135,11 @@ pub fn get_error_message(err_code: u32) -> String {
     //Write default null terminator in case WintunGetAdapterName leaves name unchanged
     unsafe { first.write(0u16) };
     let chars_written = unsafe {
-        winbase::FormatMessageW(
-            winbase::FORMAT_MESSAGE_FROM_SYSTEM | winbase::FORMAT_MESSAGE_IGNORE_INSERTS,
+        FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
             ptr::null(),
             err_code,
-            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT) as u32,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
             first,
             LEN as u32,
             ptr::null_mut(),
@@ -146,8 +152,11 @@ pub fn get_error_message(err_code: u32) -> String {
 }
 
 pub(crate) fn get_last_error() -> String {
-    let err_code = unsafe { errhandlingapi::GetLastError() };
-    get_error_message(err_code)
+    let err = unsafe { GetLastError() };
+    match err {
+        Ok(_) => "No error".to_string(),
+        Err(err) => err.to_string(),
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -160,7 +169,7 @@ pub struct Version {
 pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, crate::Error> {
     let version = unsafe { wintun.WintunGetRunningDriverVersion() };
     if version == 0 {
-        Err(crate::Error::SysError(get_last_error()))
+        Err(crate::Error::from(get_last_error()))
     } else {
         let v = version.to_be_bytes();
         Ok(Version {

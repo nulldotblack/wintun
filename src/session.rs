@@ -4,9 +4,12 @@ use crate::{
     wintun_raw, Adapter, Error, Wintun,
 };
 use std::{ptr, slice, sync::Arc, sync::OnceLock};
-use winapi::{
-    shared::winerror,
-    um::{errhandlingapi::GetLastError, handleapi, synchapi, winbase, winnt},
+use windows::Win32::{
+    Foundation::{
+        self, CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED,
+        WAIT_OBJECT_0,
+    },
+    System::Threading::{SetEvent, WaitForMultipleObjects, INFINITE},
 };
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_session_handle>
@@ -19,11 +22,11 @@ pub struct Session {
 
     /// Windows event handle that is signaled by the wintun driver when data becomes available to
     /// read
-    pub(crate) read_event: OnceLock<UnsafeHandle<winnt::HANDLE>>,
+    pub(crate) read_event: OnceLock<HANDLE>,
 
     /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
     /// readers to exit
-    pub(crate) shutdown_event: UnsafeHandle<winnt::HANDLE>,
+    pub(crate) shutdown_event: HANDLE,
 
     /// The adapter that owns this session
     pub(crate) adapter: Arc<Adapter>,
@@ -81,11 +84,14 @@ impl Session {
         debug_assert!(size <= u16::MAX as u32);
         if ptr.is_null() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
-            let last_error = unsafe { GetLastError() };
-            if last_error == winerror::ERROR_NO_MORE_ITEMS {
-                Ok(None)
+            if let Err(last_error) = unsafe { GetLastError() } {
+                if last_error.code() == ERROR_NO_MORE_ITEMS.to_hresult() {
+                    Ok(None)
+                } else {
+                    Err(last_error.into())
+                }
             } else {
-                Err(Error::from(util::get_last_error()))
+                Err("Unknow error".into())
             }
         } else {
             Ok(Some(packet::Packet {
@@ -100,13 +106,10 @@ impl Session {
 
     /// Returns the low level read event handle that is signaled when more data becomes available
     /// to read
-    pub(crate) fn get_read_wait_event(&self) -> Result<winnt::HANDLE, Error> {
-        Ok(self
-            .read_event
-            .get_or_init(|| unsafe {
-                UnsafeHandle(self.wintun.WintunGetReadWaitEvent(self.session.0) as winnt::HANDLE)
-            })
-            .0)
+    pub(crate) fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
+        Ok(*self.read_event.get_or_init(|| unsafe {
+            HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _)
+        }))
     }
 
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
@@ -127,24 +130,19 @@ impl Session {
                 }
             }
             //Wait on both the read handle and the shutdown handle so that we stop when requested
-            let handles = [self.get_read_wait_event()?, self.shutdown_event.0];
+            let handles = [self.get_read_wait_event()?, self.shutdown_event];
             let result = unsafe {
                 //SAFETY: We abide by the requirements of WaitForMultipleObjects, handles is a
                 //pointer to valid, aligned, stack memory
-                synchapi::WaitForMultipleObjects(
-                    2,
-                    &handles as *const winnt::HANDLE,
-                    0,
-                    winbase::INFINITE,
-                )
+                WaitForMultipleObjects(&handles, FALSE, INFINITE)
             };
             match result {
-                winbase::WAIT_FAILED => return Err(Error::from(util::get_last_error())),
+                WAIT_FAILED => return Err(Error::from(util::get_last_error())),
                 _ => {
-                    if result == winbase::WAIT_OBJECT_0 {
+                    if result == WAIT_OBJECT_0 {
                         //We have data!
                         continue;
-                    } else if result == winbase::WAIT_OBJECT_0 + 1 {
+                    } else if result.0 == WAIT_OBJECT_0.0 + 1 {
                         //Shutdown event triggered
                         let err = format!("Session {:?} shuting down", self.session);
                         return Err(Error::from(err));
@@ -156,8 +154,9 @@ impl Session {
 
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
     pub fn shutdown(&self) {
-        let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
-        let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
+        let handle = Foundation::HANDLE(self.shutdown_event.0);
+        let _ = unsafe { SetEvent(handle) };
+        let _ = unsafe { CloseHandle(handle) };
     }
 }
 
