@@ -4,8 +4,14 @@ use widestring::{U16CStr, U16Str};
 use windows::{
     core::imp::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS},
     Win32::{
-        Foundation::{GetLastError, ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
-        NetworkManagement::IpHelper::{GetInterfaceInfo, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO},
+        Foundation::{
+            GetLastError, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, NO_ERROR, WIN32_ERROR,
+        },
+        NetworkManagement::IpHelper::{
+            GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_PREFIX,
+            IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
+        },
+        Networking::WinSock::AF_UNSPEC,
         System::SystemServices::{LANG_NEUTRAL, SUBLANG_DEFAULT},
     },
 };
@@ -18,6 +24,48 @@ pub(crate) struct UnsafeHandle<T>(pub T);
 /// doesn't have the same mutable aliasing restrictions we have in Rust
 unsafe impl<T> Send for UnsafeHandle<T> {}
 unsafe impl<T> Sync for UnsafeHandle<T> {}
+
+pub(crate) fn get_adapters_addresses<F>(mut callback: F) -> Result<(), Error>
+where
+    F: FnMut(IP_ADAPTER_ADDRESSES_LH),
+{
+    let mut size = 0;
+    let flags = GAA_FLAG_INCLUDE_PREFIX;
+    let family = AF_UNSPEC.0 as u32;
+
+    // Make an initial call to GetAdaptersAddresses to get the
+    // size needed into the size variable
+    let result = unsafe { GetAdaptersAddresses(family, flags, None, None, &mut size) };
+
+    if WIN32_ERROR(result) != ERROR_BUFFER_OVERFLOW {
+        WIN32_ERROR(result).ok()?;
+    }
+    // Allocate memory for the buffer
+    let mut addresses: Vec<u8> = vec![0; (size + 4) as usize];
+
+    // Make a second call to GetAdaptersAddresses to get the actual data we want
+    let result = unsafe {
+        GetAdaptersAddresses(
+            family,
+            flags,
+            None,
+            Some(addresses.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES_LH),
+            &mut size,
+        )
+    };
+
+    WIN32_ERROR(result).ok()?;
+
+    // If successful, output some information from the data we received
+    let mut current_addresses = addresses.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
+    while !current_addresses.is_null() {
+        unsafe {
+            callback(*current_addresses);
+            current_addresses = (*current_addresses).Next;
+        }
+    }
+    Ok(())
+}
 
 fn get_interface_info_sys() -> Result<Vec<IP_ADAPTER_INDEX_MAP>, Error> {
     let mut buf_len: u32 = 0;

@@ -10,12 +10,14 @@ use crate::{
     wintun_raw, Wintun,
 };
 use itertools::Itertools;
-use rand::Rng;
-use std::{ptr, sync::Arc, sync::OnceLock};
+use std::{ffi::CStr, ptr, sync::Arc, sync::OnceLock};
 use widestring::U16CString;
 use windows::{
-    core::PCSTR,
-    Win32::{Foundation::FALSE, System::Threading::CreateEventA},
+    core::{GUID, PCSTR, PCWSTR},
+    Win32::{
+        Foundation::FALSE, NetworkManagement::IpHelper::IP_ADAPTER_ADDRESSES_LH,
+        System::Threading::CreateEventA,
+    },
 };
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
@@ -69,12 +71,7 @@ impl Adapter {
 
         let guid = match guid {
             Some(guid) => guid,
-            None => {
-                // Use random bytes so that we can identify this adapter in get_adapter_index
-                let mut guid_bytes: [u8; 16] = [0u8; 16];
-                rand::thread_rng().fill(&mut guid_bytes);
-                u128::from_ne_bytes(guid_bytes)
-            }
+            None => GUID::new()?.to_u128(),
         };
         //SAFETY: guid is a unique integer so transmuting either all zeroes or the user's preferred
         //guid to the winapi guid type is safe and will allow the windows kernel to see our GUID
@@ -123,11 +120,22 @@ impl Adapter {
         if result.is_null() {
             Err("WintunOpenAdapter failed".into())
         } else {
+            let mut guid = None;
+            util::get_adapters_addresses(|address: IP_ADAPTER_ADDRESSES_LH| {
+                let adapter: &CStr = unsafe { CStr::from_ptr(address.AdapterName.0 as *const i8) };
+                let adapter: &str = adapter.to_str().unwrap();
+
+                let frindly_name = PCWSTR(address.FriendlyName.0 as *const u16);
+                let frindly_name = unsafe { frindly_name.to_string().unwrap() };
+                if frindly_name == name {
+                    guid = Some(GUID::from(&adapter[1..37]));
+                }
+            })?;
+            let guid = guid.ok_or("Unable to find matching GUID")?.to_u128();
             Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
-                // TODO: get GUID somehow
-                guid: 0,
+                guid,
             }))
         }
     }

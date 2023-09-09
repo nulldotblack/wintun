@@ -29,7 +29,6 @@ panic_on_unsent_packets = []
 itertools = "0.11"
 libloading = "0.8"
 log = "0.4"
-rand = "0.8"
 thiserror = "1.0"
 widestring = "1.0"
 windows = { version = "0.51", features = [
