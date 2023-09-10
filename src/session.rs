@@ -6,8 +6,7 @@ use crate::{
 use std::{ptr, slice, sync::Arc, sync::OnceLock};
 use windows::Win32::{
     Foundation::{
-        self, CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED,
-        WAIT_OBJECT_0,
+        CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED, WAIT_OBJECT_0,
     },
     System::Threading::{SetEvent, WaitForMultipleObjects, INFINITE},
 };
@@ -33,6 +32,10 @@ pub struct Session {
 }
 
 impl Session {
+    pub fn get_adapter(&self) -> Arc<Adapter> {
+        self.adapter.clone()
+    }
+
     /// Allocates a send packet of the specified size. Wraps WintunAllocateSendPacket
     ///
     /// All packets returned from this function must be sent using [`Session::send_packet`] because
@@ -106,7 +109,7 @@ impl Session {
 
     /// Returns the low level read event handle that is signaled when more data becomes available
     /// to read
-    pub(crate) fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
+    pub fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
         Ok(*self.read_event.get_or_init(|| unsafe {
             HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _)
         }))
@@ -153,21 +156,19 @@ impl Session {
     }
 
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
-    pub fn shutdown(&self) {
-        let handle = Foundation::HANDLE(self.shutdown_event.0);
-        let _ = unsafe { SetEvent(handle) };
-        let _ = unsafe { CloseHandle(handle) };
+    pub fn shutdown(&self) -> Result<(), Error> {
+        unsafe { SetEvent(self.shutdown_event)? };
+        Ok(())
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let _ = Arc::clone(&self.adapter);
+        if let Err(err) = unsafe { CloseHandle(self.shutdown_event) } {
+            log::error!("Failed to close handle of shutdown event: {:?}", err);
+        }
+
         unsafe { self.wintun.WintunEndSession(self.session.0) };
         self.session.0 = ptr::null_mut();
-
-        //Adapter must be dropped after we call `WintunEndSession`,
-        //if `self.adapter is the last reference
-        //drop(self.adapter)
     }
 }

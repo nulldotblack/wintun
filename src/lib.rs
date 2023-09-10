@@ -100,6 +100,7 @@ pub use crate::{
     session::Session,
     util::{get_error_message, get_running_driver_version, Version},
 };
+pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 
 // TODO: Get bindgen to scrape these from the `wintun.h`
 // We need to make sure these stay up to date

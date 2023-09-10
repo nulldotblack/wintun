@@ -15,7 +15,8 @@ use widestring::U16CString;
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
-        Foundation::FALSE, NetworkManagement::IpHelper::IP_ADAPTER_ADDRESSES_LH,
+        Foundation::FALSE,
+        NetworkManagement::{IpHelper::IP_ADAPTER_ADDRESSES_LH, Ndis::NET_LUID_LH},
         System::Threading::CreateEventA,
     },
 };
@@ -25,6 +26,7 @@ pub struct Adapter {
     adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
     wintun: Wintun,
     guid: u128,
+    name: String,
 }
 
 fn encode_to_utf16(string: &str, max_characters: usize) -> Result<U16CString, Error> {
@@ -46,13 +48,21 @@ fn encode_to_utf16(string: &str, max_characters: usize) -> Result<U16CString, Er
     }
 }
 
-fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> u64 {
+fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
     let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
     unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
     unsafe { std::mem::transmute(luid) }
 }
 
 impl Adapter {
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_guid(&self) -> u128 {
+        self.guid
+    }
+
     //TODO: Call get last error for error information on failure and improve error types
 
     /// Creates a new wintun adapter inside the name `name` with tunnel type `tunnel_type`
@@ -98,6 +108,7 @@ impl Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
+                name: name.to_string(),
             }))
         }
     }
@@ -142,6 +153,7 @@ impl Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
+                name: name.to_string(),
             }))
         }
     }
@@ -176,22 +188,20 @@ impl Adapter {
         if result.is_null() {
             Err("WintunStartSession failed".into())
         } else {
+            let shutdown_event =
+                unsafe { CreateEventA(None, FALSE, FALSE, PCSTR(std::ptr::null()))? };
             Ok(session::Session {
                 session: UnsafeHandle(result),
                 wintun: self.wintun.clone(),
                 read_event: OnceLock::new(),
-                shutdown_event: unsafe {
-                    //SAFETY: We follow the contract required by CreateEventA. See MSDN
-                    //(the pointers are allowed to be null, and 0 is okay for the others)
-                    CreateEventA(None, FALSE, FALSE, PCSTR(std::ptr::null()))?
-                },
+                shutdown_event,
                 adapter: Arc::clone(self),
             })
         }
     }
 
     /// Returns the Win32 LUID for this adapter
-    pub fn get_luid(&self) -> u64 {
+    pub fn get_luid(&self) -> NET_LUID_LH {
         get_adapter_luid(&self.wintun, self.adapter.0)
     }
 

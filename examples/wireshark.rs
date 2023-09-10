@@ -248,7 +248,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     RUNNING.store(false, Ordering::Relaxed);
 
     log::info!("Stopping session");
-    main_session.shutdown();
+    main_session.shutdown()?;
 
     let packets_captured = reader
         .join()
