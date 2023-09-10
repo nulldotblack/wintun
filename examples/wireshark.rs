@@ -18,7 +18,7 @@ use windows::Win32::{
     NetworkManagement::IpHelper::{GetBestRoute, MIB_IPFORWARDROW},
     Networking::WinSock::{AF_INET, AF_INET6, SOCKADDR_INET},
 };
-use wintun::get_error_message;
+use wintun::{get_error_message, Error};
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
@@ -65,35 +65,22 @@ impl RouteCmd {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let wintun =
-        wintun::load_from_path("wintun/bin/amd64/wintun.dll").expect("Failed to load wintun dll");
+    let wintun = wintun::load_from_path("wintun/bin/amd64/wintun.dll")?;
 
-    let adapter =
-        match wintun::Adapter::open(&wintun, "Demo") {
-            Ok(a) => {
-               log::info!("Opened adapter successfully");
-                a
-            }
-            Err(_) => {
-                match wintun::Adapter::create(&wintun,"Demo", "Example",  None) {
-                Ok(d) => {
-                    log::info!("Created adapter successfully! ");
-                    d
-                },
-                Err(err) => panic!("Failed to open adapter and failed to create adapter. Is process running as admin? Error: {}", err),
-            }
-            }
-        };
+    let adapter = match wintun::Adapter::open(&wintun, "Demo") {
+        Ok(a) => a,
+        Err(_) => wintun::Adapter::create(&wintun, "Demo", "Example", None)?,
+    };
 
-    let version = wintun::get_running_driver_version(&wintun).unwrap();
+    let version = wintun::get_running_driver_version(&wintun)?;
     log::info!("Using wintun version: {:?}", version);
 
     //Give wintun interface ip and gateway
-    let interface_address: IpAddr = "10.8.0.2".parse().unwrap();
-    let interface_gateway: IpAddr = "10.8.0.1".parse().unwrap();
+    let interface_address: IpAddr = "10.8.0.2".parse()?;
+    let interface_gateway: IpAddr = "10.8.0.1".parse()?;
     let interface_prefix_length = 24;
 
     let dns_server = "1.1.1.1";
@@ -109,7 +96,7 @@ fn main() {
         );
         if result != NO_ERROR.0 {
             log::error!("Failed to get best route: {}", get_error_message(result));
-            return;
+            return Err("Failed to get best route".into());
         }
         log::trace!("Route: {:?}", row.dwForwardDest.to_ne_bytes());
         log::trace!("Mask: {:?}", row.dwForwardMask.to_ne_bytes());
@@ -125,9 +112,7 @@ fn main() {
     };
     log::info!("Gateway is: {}", gateway);
 
-    let wintun_adapter_index = adapter
-        .get_adapter_index()
-        .expect("Failed to get adapter index");
+    let wintun_adapter_index = adapter.get_adapter_index()?;
     log::info!("Index is {}", wintun_adapter_index);
 
     let mut routes: Vec<RouteCmd> = Vec::new();
@@ -176,24 +161,19 @@ fn main() {
                 stderr: Redirection::Merge,
                 ..Default::default()
             },
-        )
-        .expect("Failed to run cmd");
+        )?;
 
-        let raw_output = result
-            .communicate(None)
-            .expect("Failed to get output from process")
-            .0
-            .unwrap();
+        let raw_output = result.communicate(None)?.0.ok_or("communicate")?;
 
         let output = raw_output.trim();
-        let status = result.wait().expect("Failed to get process exit status");
+        let status = result.wait()?;
         if !status.success() || (!output.is_empty() && output != "Ok.") {
             log::error!("Running process: {:?} failed! Output: {}", args, output);
-            return;
+            return Err("Running process".into());
         }
     }
 
-    let file = File::create("out.pcap").unwrap();
+    let file = File::create("out.pcap")?;
 
     let header = pcap_file::pcap::PcapHeader {
         version_major: 2,
@@ -205,12 +185,8 @@ fn main() {
         ts_resolution: pcap_file::TsResolution::NanoSecond,
         endianness: pcap_file::Endianness::Little,
     };
-    let mut writer = pcap_file::pcap::PcapWriter::with_header(file, header).unwrap();
-    let main_session = Arc::new(
-        adapter
-            .start_session(wintun::MAX_RING_CAPACITY)
-            .expect("Failed to create session"),
-    );
+    let mut writer = pcap_file::pcap::PcapWriter::with_header(file, header)?;
+    let main_session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
     let reader_session = main_session.clone();
     let writer_session = main_session.clone();
@@ -219,23 +195,21 @@ fn main() {
         let mut packet_count = 0;
         log::info!("Starting reader");
         while RUNNING.load(Ordering::Relaxed) {
-            match reader_session.receive_blocking() {
-                Ok(mut packet) => {
-                    packet_count += 1;
-                    let bytes = packet.bytes_mut();
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    let packet = pcap_file::pcap::PcapPacket::new(now, bytes.len() as u32, bytes);
-                    writer.write_packet(&packet).unwrap();
-                }
-                Err(err) => {
-                    log::error!("Got error while reading: {}", err);
-                    break;
-                }
+            let packet = reader_session.receive_blocking();
+            if let Err(err) = packet {
+                log::info!("Got error while reading: {}", err);
+                break;
             }
+            let mut packet = packet?;
+            packet_count += 1;
+            let bytes = packet.bytes_mut();
+            let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+            let packet = pcap_file::pcap::PcapPacket::new(now, bytes.len() as u32, bytes);
+            writer
+                .write_packet(&packet)
+                .map_err(|err| Error::from(format!("Failed to write packet to pcap: {}", err)))?;
         }
-        packet_count
+        Ok::<i32, Error>(packet_count)
     });
     let writer = std::thread::spawn(move || {
         log::info!("Starting writer");
@@ -249,32 +223,21 @@ fn main() {
             let buf = packet::buffer::Slice::new(packet.bytes_mut());
 
             //Send random ICMP request
-            let _ = packet::ip::v4::Builder::with(buf)
-                .unwrap()
-                .id(0x2d87)
-                .unwrap()
-                .ttl(64)
-                .unwrap()
-                .source("10.6.7.8".parse().unwrap())
-                .unwrap()
-                .destination(v4_dest)
-                .unwrap()
-                .icmp()
-                .unwrap()
-                .echo()
-                .unwrap()
-                .request()
-                .unwrap()
-                .identifier(42)
-                .unwrap()
-                .sequence(2)
-                .unwrap()
-                .build()
-                .unwrap();
-
+            let _ = packet::ip::v4::Builder::with(buf)?
+                .id(0x2d87)?
+                .ttl(64)?
+                .source("10.6.7.8".parse().unwrap())?
+                .destination(v4_dest)?
+                .icmp()?
+                .echo()?
+                .request()?
+                .identifier(42)?
+                .sequence(2)?
+                .build()?;
             writer_session.send_packet(packet);
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
+        Ok::<(), packet::Error>(())
     });
 
     std::thread::sleep(std::time::Duration::from_secs(1));
@@ -287,8 +250,12 @@ fn main() {
     log::info!("Stopping session");
     main_session.shutdown();
 
-    let packets_captured = reader.join().unwrap();
-    writer.join().unwrap();
+    let packets_captured = reader
+        .join()
+        .map_err(|err| Error::from(format!("{:?}", err)))??;
+    writer
+        .join()
+        .map_err(|err| Error::from(format!("{:?}", err)))??;
 
     log::info!("Finished session successfully!");
 
@@ -311,17 +278,12 @@ fn main() {
                         stderr: Redirection::Merge,
                         ..Default::default()
                     },
-                )
-                .expect("Failed to run cmd");
+                )?;
 
-                let raw_output = result
-                    .communicate(None)
-                    .expect("Failed to get output from process")
-                    .0
-                    .unwrap();
+                let raw_output = result.communicate(None)?.0.ok_or("communicate")?;
 
                 let output = raw_output.trim();
-                let status = result.wait().expect("Failed to get process exit status");
+                let status = result.wait()?;
                 if !status.success() || (!output.is_empty() && output != "Ok.") {
                     log::warn!("Running process: {:?} failed! Output: {}", args, output);
                 }
@@ -332,4 +294,5 @@ fn main() {
 
     log::info!("Saved {} captured packets to out.pcap", packets_captured);
     //`main_session` and `adapter` are both dropped
+    Ok(())
 }

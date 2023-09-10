@@ -25,7 +25,7 @@
 //!     Ok(a) => a,
 //!     Err(_) => {
 //!         //If loading failed (most likely it didn't exist), create a new one
-//!         wintun::Adapter::create(&wintun, "Example", "Demo", None)
+//!         wintun::Adapter::create(&wintun, "Demo", "Example", None)
 //!             .expect("Failed to create wintun adapter!")
 //!     }
 //! };
@@ -98,7 +98,7 @@ pub use crate::{
     log::{default_logger, reset_logger, set_logger},
     packet::Packet,
     session::Session,
-    util::{get_error_message, get_running_driver_version},
+    util::{get_error_message, get_running_driver_version, Version},
 };
 
 // TODO: Get bindgen to scrape these from the `wintun.h`

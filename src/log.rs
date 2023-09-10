@@ -29,7 +29,7 @@ pub unsafe extern "stdcall" fn default_logger(
         wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_INFO => log::info!("WinTun: {}", utf8_msg),
         wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_WARN => log::warn!("WinTun: {}", utf8_msg),
         wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_ERR => log::error!("WinTun: {}", utf8_msg),
-        _ => log::error!("WinTun: {} (with invalid log level {})", utf8_msg, level),
+        _ => log::debug!("WinTun: {} (with invalid log level {})", utf8_msg, level),
     }
 }
 
