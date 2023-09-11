@@ -57,10 +57,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = wintun::get_running_driver_version(&wintun);
     println!("Wintun version: {:?}", version);
 
+    let adapter_name = "Demo";
+
     // Open or create a new adapter
-    let adapter = match wintun::Adapter::open(&wintun, "Demo") {
+    let adapter = match wintun::Adapter::open(&wintun, adapter_name) {
         Ok(a) => a,
-        Err(_) => wintun::Adapter::create(&wintun, "Demo", "MyTunnelType", None)?,
+        Err(_) => wintun::Adapter::create(&wintun, adapter_name, "MyTunnelType", None)?,
     };
 
     let version = wintun::get_running_driver_version(&wintun)?;
@@ -68,11 +70,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Setting virtual network card information
     // ip = 10.28.13.2 mask = 255.255.255.0 gateway = 10.28.13.1
-    let index = adapter.get_adapter_index()?;
-    let set_metric = format!("netsh interface ip set interface {} metric=255", index);
+    // let index = adapter.get_adapter_index()?;
+    let set_metric = format!(
+        "netsh interface ip set interface {} metric=255",
+        adapter_name
+    );
     let set_gateway = format!(
         "netsh interface ip set address {} static 10.28.13.2/24 gateway=10.28.13.1",
-        index
+        adapter_name
     );
 
     println!("{}", set_metric);
@@ -92,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 10.28.13.1 gateway (which is the virtual network card we created above)
     let set_route = format!(
         "netsh interface ip add route 10.28.13.2/24 {} 10.28.13.1",
-        index
+        adapter_name
     );
     println!("{}", set_route);
     std::process::Command::new("cmd")
