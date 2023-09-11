@@ -10,8 +10,13 @@ use crate::{
     wintun_raw, Wintun,
 };
 use itertools::Itertools;
-use std::{ffi::CStr, ptr, sync::Arc, sync::OnceLock};
-use widestring::U16CString;
+use std::{
+    ffi::{CStr, OsStr},
+    os::windows::prelude::OsStrExt,
+    ptr,
+    sync::Arc,
+    sync::OnceLock,
+};
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
@@ -27,25 +32,6 @@ pub struct Adapter {
     wintun: Wintun,
     guid: u128,
     name: String,
-}
-
-fn encode_to_utf16(string: &str, max_characters: usize) -> Result<U16CString, Error> {
-    let utf16 = U16CString::from_str(string).map_err(|e| Error::from(format!("{e}")))?;
-    if utf16.len() >= max_characters {
-        //max_characters is the maximum number of characters including the null terminator. And .len() measures the
-        //number of characters (excluding the null terminator). Therefore we can hold a string with
-        //max_characters - 1 because the null terminator sits in the last element. However a string
-        //of length max_characters needs max_characters + 1 to store the null terminator the >=
-        //check holds
-        Err(format!(
-            "Length too large. Size: {}, Max: {}",
-            utf16.len(),
-            max_characters
-        )
-        .into())
-    } else {
-        Ok(utf16)
-    }
 }
 
 fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
@@ -76,8 +62,14 @@ impl Adapter {
         tunnel_type: &str,
         guid: Option<u128>,
     ) -> Result<Arc<Adapter>, Error> {
-        let name_utf16 = encode_to_utf16(name, crate::MAX_POOL)?;
-        let tunnel_type_utf16 = encode_to_utf16(tunnel_type, crate::MAX_POOL)?;
+        let name_utf16: Vec<u16> = OsStr::new(name)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let tunnel_type_utf16: Vec<u16> = OsStr::new(tunnel_type)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
         let guid = match guid {
             Some(guid) => guid,
@@ -122,7 +114,10 @@ impl Adapter {
     /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
     /// or via the Win32 API, so PR's that solve this issue are always welcome!
     pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
-        let name_utf16 = encode_to_utf16(name, crate::MAX_POOL)?;
+        let name_utf16: Vec<u16> = OsStr::new(name)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
 
         crate::log::set_default_logger_if_unset(wintun);
 
