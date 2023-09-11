@@ -98,7 +98,7 @@ pub use crate::{
     log::{default_logger, reset_logger, set_logger},
     packet::Packet,
     session::Session,
-    util::{get_error_message, get_running_driver_version, Version},
+    util::{format_message, get_running_driver_version, Version},
 };
 pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 

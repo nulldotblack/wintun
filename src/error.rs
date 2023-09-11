@@ -57,4 +57,10 @@ impl From<&str> for Error {
     }
 }
 
+impl From<Box<dyn std::error::Error>> for Error {
+    fn from(value: Box<dyn std::error::Error>) -> Self {
+        Error::String(value.to_string())
+    }
+}
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;

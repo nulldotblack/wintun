@@ -18,7 +18,7 @@ use windows::Win32::{
     NetworkManagement::IpHelper::{GetBestRoute, MIB_IPFORWARDROW},
     Networking::WinSock::{AF_INET, AF_INET6, SOCKADDR_INET},
 };
-use wintun::{get_error_message, Error};
+use wintun::{format_message, Error};
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut row as *mut MIB_IPFORWARDROW,
         );
         if result != NO_ERROR.0 {
-            log::error!("Failed to get best route: {}", get_error_message(result));
+            log::error!("Failed to get best route: {}", format_message(result)?);
             return Err("Failed to get best route".into());
         }
         log::trace!("Route: {:?}", row.dwForwardDest.to_ne_bytes());
