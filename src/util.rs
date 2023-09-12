@@ -145,6 +145,7 @@ where
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_interface_info() -> Result<Vec<(u32, String)>, Error> {
     let mut v = vec![];
     get_interface_info_sys(|interface| {

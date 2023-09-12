@@ -9,20 +9,16 @@ use crate::{
     util::{self, UnsafeHandle},
     wintun_raw, Wintun,
 };
-use itertools::Itertools;
-use std::{
-    ffi::{CStr, OsStr},
-    os::windows::prelude::OsStrExt,
-    ptr,
-    sync::Arc,
-    sync::OnceLock,
-};
+use std::{ffi::OsStr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock};
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
         Foundation::FALSE,
         NetworkManagement::{IpHelper::IP_ADAPTER_ADDRESSES_LH, Ndis::NET_LUID_LH},
-        System::Threading::CreateEventA,
+        System::{
+            Com::{CLSIDFromString, StringFromGUID2},
+            Threading::CreateEventA,
+        },
     },
 };
 
@@ -75,20 +71,12 @@ impl Adapter {
             Some(guid) => guid,
             None => GUID::new()?.to_u128(),
         };
-        //SAFETY: guid is a unique integer so transmuting either all zeroes or the user's preferred
-        //guid to the winapi guid type is safe and will allow the windows kernel to see our GUID
-        let guid_struct: wintun_raw::GUID = unsafe { std::mem::transmute(guid) };
-        //TODO: The guid of the adapter once created might differ from the one provided because of
-        //the byte order of the segments of the GUID struct that are larger than a byte. Verify
-        //that this works as expected
-
-        let guid_ptr = &guid_struct as *const wintun_raw::GUID;
 
         crate::log::set_default_logger_if_unset(wintun);
 
-        //SAFETY: the function is loaded from the wintun dll properly, we are providing valid
-        //pointers, and all the strings are correct null terminated UTF-16. This safety rationale
-        //applies for all Wintun* functions below
+        let guid_struct: wintun_raw::GUID = unsafe { std::mem::transmute(GUID::from_u128(guid)) };
+        let guid_ptr = &guid_struct as *const wintun_raw::GUID;
+
         let result = unsafe {
             wintun.WintunCreateAdapter(name_utf16.as_ptr(), tunnel_type_utf16.as_ptr(), guid_ptr)
         };
@@ -131,15 +119,14 @@ impl Adapter {
                 let frindly_name = PCWSTR(address.FriendlyName.0 as *const u16);
                 let frindly_name = unsafe { frindly_name.to_string()? };
                 if frindly_name == name {
-                    let adapter: &str =
-                        unsafe { CStr::from_ptr(address.AdapterName.0 as *const i8).to_str()? };
-                    let err = format!("Failed to find GUID inside adapter name: {}", adapter);
-                    let adapter = adapter
-                        .split('{')
-                        .nth(1)
-                        .and_then(|guid| guid.split('}').next())
-                        .ok_or(err)?;
-                    guid = Some(GUID::from(adapter));
+                    let adapter_name = unsafe { address.AdapterName.to_string()? };
+                    let adapter_name_utf16: Vec<u16> = adapter_name
+                        .encode_utf16()
+                        .chain(std::iter::once(0))
+                        .collect();
+                    let adapter_name_ptr: *const u16 = adapter_name_utf16.as_ptr();
+                    let adapter = unsafe { CLSIDFromString(PCWSTR(adapter_name_ptr))? };
+                    guid = Some(adapter);
                 }
                 Ok(())
             })?;
@@ -203,45 +190,22 @@ impl Adapter {
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, Error> {
-        let interfaces = util::get_interface_info()?;
+        let name = GUID::from_u128(self.guid);
+        let mut buffer = [0u16; 40];
+        unsafe { StringFromGUID2(&name, &mut buffer) };
+        let name = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
 
-        for (index, name) in interfaces {
-            let digits: Vec<u8> = name
-                .chars()
-                .filter(|c| c.is_ascii_hexdigit())
-                .chunks(2)
-                .into_iter()
-                .filter_map(|mut chunk| {
-                    //Filter out chunks that have < 2 digits
-                    if let Some(a) = chunk.next() {
-                        if let Some(b) = chunk.next() {
-                            return Some((a, b));
-                        }
-                    }
-                    None
-                })
-                .map(|digits| {
-                    let chars: [u8; 2] = [digits.0 as u8, digits.1 as u8];
-                    let s = std::str::from_utf8(&chars).unwrap();
-                    u8::from_str_radix(s, 16).unwrap()
-                })
-                .collect();
+        let mut adapter_index = None;
 
-            //Our index is the adapter which has a guid in its name that matches ours
-            //For now we just check for a guid with the same hex bytes in any order
-            //TODO: byte swap GUID from name so that we can compare self.guid with the parsed GUID
-            //directly
-            let mut match_count = 0;
-            for byte in self.guid.to_ne_bytes() {
-                if digits.contains(&byte) {
-                    match_count += 1;
-                }
+        util::get_adapters_addresses(|address| {
+            let name_iter = unsafe { address.AdapterName.to_string()? };
+            if name_iter == name {
+                adapter_index = unsafe { Some(address.Anonymous1.Anonymous.IfIndex) };
+                // adapter_index = Some(address.Ipv6IfIndex);
             }
-            if match_count == digits.len() {
-                return Ok(index);
-            }
-        }
-        Err("Unable to find matching GUID".into())
+            Ok(())
+        })?;
+        adapter_index.ok_or(format!("Unable to find matching {}", name).into())
     }
 }
 

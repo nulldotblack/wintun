@@ -32,6 +32,9 @@ pub enum Error {
     #[error("Utf8Error {0}")]
     Utf8Error(#[from] std::str::Utf8Error),
 
+    #[error("FromUtf8Error {0}")]
+    FromUtf8Error(#[from] std::string::FromUtf8Error),
+
     #[error("AddrParseError {0}")]
     AddrParseError(#[from] std::net::AddrParseError),
 
