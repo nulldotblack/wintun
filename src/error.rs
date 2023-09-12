@@ -40,6 +40,12 @@ pub enum Error {
 
     #[error("SystemTimeError {0}")]
     SystemTimeError(#[from] std::time::SystemTimeError),
+
+    #[error("TryFromSliceError {0}")]
+    TryFromSliceError(#[from] std::array::TryFromSliceError),
+
+    #[error("Infallible {0}")]
+    Infallible(#[from] std::convert::Infallible),
 }
 
 impl From<String> for Error {

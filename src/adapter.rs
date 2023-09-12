@@ -9,12 +9,15 @@ use crate::{
     util::{self, UnsafeHandle},
     wintun_raw, Wintun,
 };
-use std::{ffi::OsStr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock};
+use std::{
+    ffi::OsStr, net::IpAddr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock,
+};
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
         Foundation::FALSE,
         NetworkManagement::{IpHelper::IP_ADAPTER_ADDRESSES_LH, Ndis::NET_LUID_LH},
+        Networking::WinSock::{AF_INET, AF_INET6},
         System::{
             Com::{CLSIDFromString, StringFromGUID2},
             Threading::CreateEventA,
@@ -206,6 +209,42 @@ impl Adapter {
             Ok(())
         })?;
         adapter_index.ok_or(format!("Unable to find matching {}", name).into())
+    }
+
+    pub fn get_destination_addresses(&self) -> Result<Vec<IpAddr>, Error> {
+        let name = GUID::from_u128(self.guid);
+        let mut buffer = [0u16; 40];
+        unsafe { StringFromGUID2(&name, &mut buffer) };
+        let name = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
+
+        let mut destination_addresses = vec![];
+
+        util::get_adapters_addresses(|adapter| {
+            let name_iter = unsafe { adapter.AdapterName.to_string()? };
+            if name_iter == name {
+                let mut current_address = adapter.FirstUnicastAddress;
+                while !current_address.is_null() {
+                    let address = unsafe { (*current_address).Address };
+                    let sock_addr = address.lpSockaddr;
+                    let len = address.iSockaddrLength as usize;
+                    let ad = unsafe { std::slice::from_raw_parts(sock_addr as *const u8, len) };
+                    let address = match unsafe { (*sock_addr).sa_family } {
+                        AF_INET => Some(IpAddr::from(TryInto::<[u8; 4]>::try_into(&ad[4..8])?)),
+                        AF_INET6 => Some(IpAddr::from(TryInto::<[u8; 16]>::try_into(&ad[8..24])?)),
+                        _ => None,
+                    };
+                    if let Some(address) = address {
+                        destination_addresses.push(address);
+                    }
+                    unsafe {
+                        current_address = (*current_address).Next;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+
+        Ok(destination_addresses)
     }
 }
 
