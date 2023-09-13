@@ -114,42 +114,22 @@ fn bindgen_test_layout__GUID() {
     assert_eq!(
         unsafe { ::std::ptr::addr_of!((*ptr).Data1) as usize - ptr as usize },
         0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_GUID),
-            "::",
-            stringify!(Data1)
-        )
+        concat!("Offset of field: ", stringify!(_GUID), "::", stringify!(Data1))
     );
     assert_eq!(
         unsafe { ::std::ptr::addr_of!((*ptr).Data2) as usize - ptr as usize },
         4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_GUID),
-            "::",
-            stringify!(Data2)
-        )
+        concat!("Offset of field: ", stringify!(_GUID), "::", stringify!(Data2))
     );
     assert_eq!(
         unsafe { ::std::ptr::addr_of!((*ptr).Data3) as usize - ptr as usize },
         6usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_GUID),
-            "::",
-            stringify!(Data3)
-        )
+        concat!("Offset of field: ", stringify!(_GUID), "::", stringify!(Data3))
     );
     assert_eq!(
         unsafe { ::std::ptr::addr_of!((*ptr).Data4) as usize - ptr as usize },
         8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_GUID),
-            "::",
-            stringify!(Data4)
-        )
+        concat!("Offset of field: ", stringify!(_GUID), "::", stringify!(Data4))
     );
 }
 pub type GUID = _GUID;
@@ -252,22 +232,12 @@ fn bindgen_test_layout__NET_LUID_LH() {
     assert_eq!(
         unsafe { ::std::ptr::addr_of!((*ptr).Value) as usize - ptr as usize },
         0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_NET_LUID_LH),
-            "::",
-            stringify!(Value)
-        )
+        concat!("Offset of field: ", stringify!(_NET_LUID_LH), "::", stringify!(Value))
     );
     assert_eq!(
         unsafe { ::std::ptr::addr_of!((*ptr).Info) as usize - ptr as usize },
         0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(_NET_LUID_LH),
-            "::",
-            stringify!(Info)
-        )
+        concat!("Offset of field: ", stringify!(_NET_LUID_LH), "::", stringify!(Info))
     );
 }
 pub type NET_LUID_LH = _NET_LUID_LH;
@@ -288,9 +258,8 @@ pub const WINTUN_LOGGER_LEVEL_WINTUN_LOG_ERR: WINTUN_LOGGER_LEVEL = 2;
 #[doc = " Determines the level of logging, passed to WINTUN_LOGGER_CALLBACK."]
 pub type WINTUN_LOGGER_LEVEL = ::std::os::raw::c_int;
 #[doc = " Called by internal logger to report diagnostic messages\n\n @param Level         Message level.\n\n @param Timestamp     Message timestamp in in 100ns intervals since 1601-01-01 UTC.\n\n @param Message       Message text."]
-pub type WINTUN_LOGGER_CALLBACK = ::std::option::Option<
-    unsafe extern "stdcall" fn(Level: WINTUN_LOGGER_LEVEL, Timestamp: DWORD64, Message: LPCWSTR),
->;
+pub type WINTUN_LOGGER_CALLBACK =
+    ::std::option::Option<unsafe extern "stdcall" fn(Level: WINTUN_LOGGER_LEVEL, Timestamp: DWORD64, Message: LPCWSTR)>;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct _TUN_SESSION {
@@ -301,32 +270,22 @@ pub type WINTUN_SESSION_HANDLE = *mut _TUN_SESSION;
 extern crate libloading;
 pub struct wintun {
     __library: ::libloading::Library,
-    pub WintunCreateAdapter: unsafe extern "stdcall" fn(
-        arg1: LPCWSTR,
-        arg2: LPCWSTR,
-        arg3: *const GUID,
-    ) -> WINTUN_ADAPTER_HANDLE,
+    pub WintunCreateAdapter:
+        unsafe extern "stdcall" fn(arg1: LPCWSTR, arg2: LPCWSTR, arg3: *const GUID) -> WINTUN_ADAPTER_HANDLE,
     pub WintunCloseAdapter: unsafe extern "stdcall" fn(arg1: WINTUN_ADAPTER_HANDLE),
     pub WintunOpenAdapter: unsafe extern "stdcall" fn(arg1: LPCWSTR) -> WINTUN_ADAPTER_HANDLE,
-    pub WintunGetAdapterLUID:
-        unsafe extern "stdcall" fn(arg1: WINTUN_ADAPTER_HANDLE, arg2: *mut NET_LUID),
+    pub WintunGetAdapterLUID: unsafe extern "stdcall" fn(arg1: WINTUN_ADAPTER_HANDLE, arg2: *mut NET_LUID),
     pub WintunGetRunningDriverVersion: unsafe extern "stdcall" fn() -> DWORD,
     pub WintunDeleteDriver: unsafe extern "stdcall" fn() -> BOOL,
     pub WintunSetLogger: unsafe extern "stdcall" fn(arg1: WINTUN_LOGGER_CALLBACK),
-    pub WintunStartSession: unsafe extern "stdcall" fn(
-        arg1: WINTUN_ADAPTER_HANDLE,
-        arg2: DWORD,
-    ) -> WINTUN_SESSION_HANDLE,
+    pub WintunStartSession:
+        unsafe extern "stdcall" fn(arg1: WINTUN_ADAPTER_HANDLE, arg2: DWORD) -> WINTUN_SESSION_HANDLE,
     pub WintunEndSession: unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE),
     pub WintunGetReadWaitEvent: unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE) -> HANDLE,
-    pub WintunReceivePacket:
-        unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: *mut DWORD) -> *mut BYTE,
-    pub WintunReleaseReceivePacket:
-        unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: *const BYTE),
-    pub WintunAllocateSendPacket:
-        unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: DWORD) -> *mut BYTE,
-    pub WintunSendPacket:
-        unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: *const BYTE),
+    pub WintunReceivePacket: unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: *mut DWORD) -> *mut BYTE,
+    pub WintunReleaseReceivePacket: unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: *const BYTE),
+    pub WintunAllocateSendPacket: unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: DWORD) -> *mut BYTE,
+    pub WintunSendPacket: unsafe extern "stdcall" fn(arg1: WINTUN_SESSION_HANDLE, arg2: *const BYTE),
 }
 impl wintun {
     pub unsafe fn new<P>(path: P) -> Result<Self, ::libloading::Error>
@@ -345,21 +304,15 @@ impl wintun {
         let WintunCloseAdapter = __library.get(b"WintunCloseAdapter\0").map(|sym| *sym)?;
         let WintunOpenAdapter = __library.get(b"WintunOpenAdapter\0").map(|sym| *sym)?;
         let WintunGetAdapterLUID = __library.get(b"WintunGetAdapterLUID\0").map(|sym| *sym)?;
-        let WintunGetRunningDriverVersion = __library
-            .get(b"WintunGetRunningDriverVersion\0")
-            .map(|sym| *sym)?;
+        let WintunGetRunningDriverVersion = __library.get(b"WintunGetRunningDriverVersion\0").map(|sym| *sym)?;
         let WintunDeleteDriver = __library.get(b"WintunDeleteDriver\0").map(|sym| *sym)?;
         let WintunSetLogger = __library.get(b"WintunSetLogger\0").map(|sym| *sym)?;
         let WintunStartSession = __library.get(b"WintunStartSession\0").map(|sym| *sym)?;
         let WintunEndSession = __library.get(b"WintunEndSession\0").map(|sym| *sym)?;
         let WintunGetReadWaitEvent = __library.get(b"WintunGetReadWaitEvent\0").map(|sym| *sym)?;
         let WintunReceivePacket = __library.get(b"WintunReceivePacket\0").map(|sym| *sym)?;
-        let WintunReleaseReceivePacket = __library
-            .get(b"WintunReleaseReceivePacket\0")
-            .map(|sym| *sym)?;
-        let WintunAllocateSendPacket = __library
-            .get(b"WintunAllocateSendPacket\0")
-            .map(|sym| *sym)?;
+        let WintunReleaseReceivePacket = __library.get(b"WintunReleaseReceivePacket\0").map(|sym| *sym)?;
+        let WintunAllocateSendPacket = __library.get(b"WintunAllocateSendPacket\0").map(|sym| *sym)?;
         let WintunSendPacket = __library.get(b"WintunSendPacket\0").map(|sym| *sym)?;
         Ok(wintun {
             __library,
@@ -379,12 +332,7 @@ impl wintun {
             WintunSendPacket,
         })
     }
-    pub unsafe fn WintunCreateAdapter(
-        &self,
-        arg1: LPCWSTR,
-        arg2: LPCWSTR,
-        arg3: *const GUID,
-    ) -> WINTUN_ADAPTER_HANDLE {
+    pub unsafe fn WintunCreateAdapter(&self, arg1: LPCWSTR, arg2: LPCWSTR, arg3: *const GUID) -> WINTUN_ADAPTER_HANDLE {
         (self.WintunCreateAdapter)(arg1, arg2, arg3)
     }
     pub unsafe fn WintunCloseAdapter(&self, arg1: WINTUN_ADAPTER_HANDLE) {
@@ -405,11 +353,7 @@ impl wintun {
     pub unsafe fn WintunSetLogger(&self, arg1: WINTUN_LOGGER_CALLBACK) {
         (self.WintunSetLogger)(arg1)
     }
-    pub unsafe fn WintunStartSession(
-        &self,
-        arg1: WINTUN_ADAPTER_HANDLE,
-        arg2: DWORD,
-    ) -> WINTUN_SESSION_HANDLE {
+    pub unsafe fn WintunStartSession(&self, arg1: WINTUN_ADAPTER_HANDLE, arg2: DWORD) -> WINTUN_SESSION_HANDLE {
         (self.WintunStartSession)(arg1, arg2)
     }
     pub unsafe fn WintunEndSession(&self, arg1: WINTUN_SESSION_HANDLE) {
@@ -418,25 +362,13 @@ impl wintun {
     pub unsafe fn WintunGetReadWaitEvent(&self, arg1: WINTUN_SESSION_HANDLE) -> HANDLE {
         (self.WintunGetReadWaitEvent)(arg1)
     }
-    pub unsafe fn WintunReceivePacket(
-        &self,
-        arg1: WINTUN_SESSION_HANDLE,
-        arg2: *mut DWORD,
-    ) -> *mut BYTE {
+    pub unsafe fn WintunReceivePacket(&self, arg1: WINTUN_SESSION_HANDLE, arg2: *mut DWORD) -> *mut BYTE {
         (self.WintunReceivePacket)(arg1, arg2)
     }
-    pub unsafe fn WintunReleaseReceivePacket(
-        &self,
-        arg1: WINTUN_SESSION_HANDLE,
-        arg2: *const BYTE,
-    ) {
+    pub unsafe fn WintunReleaseReceivePacket(&self, arg1: WINTUN_SESSION_HANDLE, arg2: *const BYTE) {
         (self.WintunReleaseReceivePacket)(arg1, arg2)
     }
-    pub unsafe fn WintunAllocateSendPacket(
-        &self,
-        arg1: WINTUN_SESSION_HANDLE,
-        arg2: DWORD,
-    ) -> *mut BYTE {
+    pub unsafe fn WintunAllocateSendPacket(&self, arg1: WINTUN_SESSION_HANDLE, arg2: DWORD) -> *mut BYTE {
         (self.WintunAllocateSendPacket)(arg1, arg2)
     }
     pub unsafe fn WintunSendPacket(&self, arg1: WINTUN_SESSION_HANDLE, arg2: *const BYTE) {

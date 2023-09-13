@@ -89,11 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //gateway
     let gateway = unsafe {
         let mut row: MIB_IPFORWARDROW = std::mem::zeroed();
-        let result = GetBestRoute(
-            u32::from_be_bytes([1, 1, 1, 1]),
-            0,
-            &mut row as *mut MIB_IPFORWARDROW,
-        );
+        let result = GetBestRoute(u32::from_be_bytes([1, 1, 1, 1]), 0, &mut row as *mut MIB_IPFORWARDROW);
         if result != NO_ERROR.0 {
             log::error!("Failed to get best route: {}", format_message(result)?);
             return Err("Failed to get best route".into());
@@ -116,10 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Index is {}", wintun_adapter_index);
 
     let mut routes: Vec<RouteCmd> = Vec::new();
-    routes.push(RouteCmd::set(format!(
-        "interface {} metric=1",
-        wintun_adapter_index
-    )));
+    routes.push(RouteCmd::set(format!("interface {} metric=1", wintun_adapter_index)));
     routes.push(RouteCmd::set(format!(
         "address {} static {}/{} gateway={} store=active",
         wintun_adapter_index, interface_address, interface_prefix_length, interface_gateway
@@ -250,12 +243,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Stopping session");
     main_session.shutdown()?;
 
-    let packets_captured = reader
-        .join()
-        .map_err(|err| Error::from(format!("{:?}", err)))??;
-    writer
-        .join()
-        .map_err(|err| Error::from(format!("{:?}", err)))??;
+    let packets_captured = reader.join().map_err(|err| Error::from(format!("{:?}", err)))??;
+    writer.join().map_err(|err| Error::from(format!("{:?}", err)))??;
 
     log::info!("Finished session successfully!");
 

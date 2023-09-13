@@ -9,9 +9,8 @@ use crate::{
     util::{self, UnsafeHandle},
     wintun_raw, Wintun,
 };
-use std::{
-    ffi::OsStr, net::IpAddr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{ffi::OsStr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock};
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
@@ -55,16 +54,8 @@ impl Adapter {
     /// Optionally a GUID can be specified that will become the GUID of this adapter once created.
     /// Adapters obtained via this function will be able to return their adapter index via
     /// [`Adapter::get_adapter_index`]
-    pub fn create(
-        wintun: &Wintun,
-        name: &str,
-        tunnel_type: &str,
-        guid: Option<u128>,
-    ) -> Result<Arc<Adapter>, Error> {
-        let name_utf16: Vec<u16> = OsStr::new(name)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
+    pub fn create(wintun: &Wintun, name: &str, tunnel_type: &str, guid: Option<u128>) -> Result<Arc<Adapter>, Error> {
+        let name_utf16: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
         let tunnel_type_utf16: Vec<u16> = OsStr::new(tunnel_type)
             .encode_wide()
             .chain(std::iter::once(0))
@@ -80,9 +71,7 @@ impl Adapter {
         let guid_struct: wintun_raw::GUID = unsafe { std::mem::transmute(GUID::from_u128(guid)) };
         let guid_ptr = &guid_struct as *const wintun_raw::GUID;
 
-        let result = unsafe {
-            wintun.WintunCreateAdapter(name_utf16.as_ptr(), tunnel_type_utf16.as_ptr(), guid_ptr)
-        };
+        let result = unsafe { wintun.WintunCreateAdapter(name_utf16.as_ptr(), tunnel_type_utf16.as_ptr(), guid_ptr) };
 
         if result.is_null() {
             Err("Failed to create adapter".into())
@@ -105,10 +94,7 @@ impl Adapter {
     /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
     /// or via the Win32 API, so PR's that solve this issue are always welcome!
     pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
-        let name_utf16: Vec<u16> = OsStr::new(name)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
+        let name_utf16: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
 
         crate::log::set_default_logger_if_unset(wintun);
 
@@ -123,10 +109,7 @@ impl Adapter {
                 let frindly_name = unsafe { frindly_name.to_string()? };
                 if frindly_name == name {
                     let adapter_name = unsafe { address.AdapterName.to_string()? };
-                    let adapter_name_utf16: Vec<u16> = adapter_name
-                        .encode_utf16()
-                        .chain(std::iter::once(0))
-                        .collect();
+                    let adapter_name_utf16: Vec<u16> = adapter_name.encode_utf16().chain(std::iter::once(0)).collect();
                     let adapter_name_ptr: *const u16 = adapter_name_utf16.as_ptr();
                     let adapter = unsafe { CLSIDFromString(PCWSTR(adapter_name_ptr))? };
                     guid = Some(adapter);
@@ -159,10 +142,7 @@ impl Adapter {
     pub fn start_session(self: &Arc<Self>, capacity: u32) -> Result<session::Session, Error> {
         let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
         if !range.contains(&capacity) {
-            return Err(Error::CapacityOutOfRange(OutOfRangeData {
-                range,
-                value: capacity,
-            }));
+            return Err(Error::CapacityOutOfRange(OutOfRangeData { range, value: capacity }));
         }
         if !capacity.is_power_of_two() {
             return Err(Error::CapacityNotPowerOfTwo(capacity));
@@ -173,8 +153,7 @@ impl Adapter {
         if result.is_null() {
             Err("WintunStartSession failed".into())
         } else {
-            let shutdown_event =
-                unsafe { CreateEventA(None, FALSE, FALSE, PCSTR(std::ptr::null()))? };
+            let shutdown_event = unsafe { CreateEventA(None, FALSE, FALSE, PCSTR::null())? };
             Ok(session::Session {
                 session: UnsafeHandle(result),
                 wintun: self.wintun.clone(),
@@ -211,13 +190,13 @@ impl Adapter {
         adapter_index.ok_or(format!("Unable to find matching {}", name).into())
     }
 
-    pub fn get_destination_addresses(&self) -> Result<Vec<IpAddr>, Error> {
+    pub fn get_addresses(&self) -> Result<Vec<IpAddr>, Error> {
         let name = GUID::from_u128(self.guid);
         let mut buffer = [0u16; 40];
         unsafe { StringFromGUID2(&name, &mut buffer) };
         let name = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
 
-        let mut destination_addresses = vec![];
+        let mut adapter_addresses = vec![];
 
         util::get_adapters_addresses(|adapter| {
             let name_iter = unsafe { adapter.AdapterName.to_string()? };
@@ -229,12 +208,18 @@ impl Adapter {
                     let len = address.iSockaddrLength as usize;
                     let ad = unsafe { std::slice::from_raw_parts(sock_addr as *const u8, len) };
                     let address = match unsafe { (*sock_addr).sa_family } {
-                        AF_INET => Some(IpAddr::from(TryInto::<[u8; 4]>::try_into(&ad[4..8])?)),
-                        AF_INET6 => Some(IpAddr::from(TryInto::<[u8; 16]>::try_into(&ad[8..24])?)),
+                        AF_INET => Some(IpAddr::from(TryInto::<[u8; 4]>::try_into(
+                            ad.get(4..4 + std::mem::size_of::<Ipv4Addr>())
+                                .ok_or(Error::from("No IPv4 address"))?,
+                        )?)),
+                        AF_INET6 => Some(IpAddr::from(TryInto::<[u8; 16]>::try_into(
+                            ad.get(8..8 + std::mem::size_of::<Ipv6Addr>())
+                                .ok_or(Error::from("No IPv6 address"))?,
+                        )?)),
                         _ => None,
                     };
                     if let Some(address) = address {
-                        destination_addresses.push(address);
+                        adapter_addresses.push(address);
                     }
                     unsafe {
                         current_address = (*current_address).Next;
@@ -244,7 +229,7 @@ impl Adapter {
             Ok(())
         })?;
 
-        Ok(destination_addresses)
+        Ok(adapter_addresses)
     }
 }
 

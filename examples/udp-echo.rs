@@ -15,9 +15,7 @@ use std::{
 };
 use windows::{
     core::PCWSTR,
-    Win32::Security::Cryptography::{
-        CryptAcquireContextW, CryptGenRandom, CryptReleaseContext, PROV_RSA_FULL,
-    },
+    Win32::Security::Cryptography::{CryptAcquireContextW, CryptGenRandom, CryptReleaseContext, PROV_RSA_FULL},
 };
 
 #[derive(Debug)]
@@ -71,10 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setting virtual network card information
     // ip = 10.28.13.2 mask = 255.255.255.0 gateway = 10.28.13.1
     // let index = adapter.get_adapter_index()?;
-    let set_metric = format!(
-        "netsh interface ip set interface {} metric=255",
-        adapter_name
-    );
+    let set_metric = format!("netsh interface ip set interface {} metric=255", adapter_name);
     let set_gateway = format!(
         "netsh interface ip set address {} static 10.28.13.2/24 gateway=10.28.13.1",
         adapter_name
@@ -84,26 +79,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", set_gateway);
 
     // Execute the network card initialization command
-    std::process::Command::new("cmd")
-        .arg("/C")
-        .arg(set_metric)
-        .output()?;
-    std::process::Command::new("cmd")
-        .arg("/C")
-        .arg(set_gateway)
-        .output()?;
+    std::process::Command::new("cmd").arg("/C").arg(set_metric).output()?;
+    std::process::Command::new("cmd").arg("/C").arg(set_gateway).output()?;
 
     // Add a test route setting, all traffic under the 10.28.13.2/24 subnet goes through the
     // 10.28.13.1 gateway (which is the virtual network card we created above)
-    let set_route = format!(
-        "netsh interface ip add route 10.28.13.2/24 {} 10.28.13.1",
-        adapter_name
-    );
+    let set_route = format!("netsh interface ip add route 10.28.13.2/24 {} 10.28.13.1", adapter_name);
     println!("{}", set_route);
-    std::process::Command::new("cmd")
-        .arg("/C")
-        .arg(set_route)
-        .output()?;
+    std::process::Command::new("cmd").arg("/C").arg(set_route).output()?;
+
+    let v = adapter.get_addresses()?;
+    println!("adapter addresses: {v:?}");
 
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
     let reader_session = session.clone();

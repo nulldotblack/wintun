@@ -23,9 +23,7 @@ pub unsafe extern "stdcall" fn default_logger(
     message: *const wintun_raw::WCHAR,
 ) {
     //Wintun will always give us a valid UTF16 null termineted string
-    let utf8_msg = PWSTR(message as *mut u16)
-        .to_string()
-        .unwrap_or_else(|e| e.to_string());
+    let utf8_msg = PWSTR(message as *mut u16).to_string().unwrap_or_else(|e| e.to_string());
     match level {
         wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_INFO => log::info!("WinTun: {}", utf8_msg),
         wintun_raw::WINTUN_LOGGER_LEVEL_WINTUN_LOG_WARN => log::warn!("WinTun: {}", utf8_msg),

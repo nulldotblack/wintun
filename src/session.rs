@@ -5,9 +5,7 @@ use crate::{
 };
 use std::{ptr, slice, sync::Arc, sync::OnceLock};
 use windows::Win32::{
-    Foundation::{
-        CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED, WAIT_OBJECT_0,
-    },
+    Foundation::{CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
     System::Threading::{SetEvent, WaitForMultipleObjects, INFINITE},
 };
 
@@ -44,10 +42,7 @@ impl Session {
     /// up the send queue for all other packets allocated in the future. It is okay for the session
     /// to shutdown with allocated packets that have not yet been sent
     pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, Error> {
-        let ptr = unsafe {
-            self.wintun
-                .WintunAllocateSendPacket(self.session.0, size as u32)
-        };
+        let ptr = unsafe { self.wintun.WintunAllocateSendPacket(self.session.0, size as u32) };
         if ptr.is_null() {
             Err(Error::from(util::get_last_error()))
         } else {
@@ -65,10 +60,7 @@ impl Session {
     pub fn send_packet(&self, mut packet: packet::Packet) {
         assert!(matches!(packet.kind, packet::Kind::SendPacketPending));
 
-        unsafe {
-            self.wintun
-                .WintunSendPacket(self.session.0, packet.bytes.as_ptr())
-        };
+        unsafe { self.wintun.WintunSendPacket(self.session.0, packet.bytes.as_ptr()) };
         //Mark the packet at sent
         packet.kind = packet::Kind::SendPacketSent;
     }
@@ -79,10 +71,7 @@ impl Session {
     pub fn try_receive(self: &Arc<Self>) -> Result<Option<packet::Packet>, Error> {
         let mut size = 0u32;
 
-        let ptr = unsafe {
-            self.wintun
-                .WintunReceivePacket(self.session.0, &mut size as *mut u32)
-        };
+        let ptr = unsafe { self.wintun.WintunReceivePacket(self.session.0, &mut size as *mut u32) };
 
         debug_assert!(size <= u16::MAX as u32);
         if ptr.is_null() {
@@ -110,9 +99,9 @@ impl Session {
     /// Returns the low level read event handle that is signaled when more data becomes available
     /// to read
     pub fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
-        Ok(*self.read_event.get_or_init(|| unsafe {
-            HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _)
-        }))
+        Ok(*self
+            .read_event
+            .get_or_init(|| unsafe { HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _) }))
     }
 
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.

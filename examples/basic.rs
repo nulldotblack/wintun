@@ -46,9 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     RUNNING.store(false, Ordering::Relaxed);
     session.shutdown()?;
-    let _ = reader
-        .join()
-        .map_err(|err| wintun::Error::from(format!("{:?}", err)))?;
+    let _ = reader.join().map_err(|err| wintun::Error::from(format!("{:?}", err)))?;
 
     println!("Shutdown complete");
     Ok(())

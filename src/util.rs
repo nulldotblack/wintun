@@ -3,18 +3,15 @@ use windows::{
     core::{PCWSTR, PWSTR},
     Win32::{
         Foundation::{
-            GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, HLOCAL,
-            NO_ERROR, WIN32_ERROR,
+            GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, HLOCAL, NO_ERROR, WIN32_ERROR,
         },
         NetworkManagement::IpHelper::{
-            GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_PREFIX,
-            IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
+            GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_PREFIX, IP_ADAPTER_ADDRESSES_LH,
+            IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
         },
         Networking::WinSock::AF_UNSPEC,
         System::{
-            Diagnostics::Debug::{
-                FormatMessageW, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
-            },
+            Diagnostics::Debug::{FormatMessageW, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM},
             SystemServices::{LANG_NEUTRAL, SUBLANG_DEFAULT},
         },
     },
