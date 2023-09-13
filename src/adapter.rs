@@ -9,12 +9,22 @@ use crate::{
     util::{self, UnsafeHandle},
     wintun_raw, Wintun,
 };
-use std::{ffi::OsStr, net::IpAddr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock};
+use std::{
+    ffi::OsStr,
+    net::{IpAddr, Ipv4Addr},
+    os::windows::prelude::OsStrExt,
+    ptr,
+    sync::Arc,
+    sync::OnceLock,
+};
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
         Foundation::FALSE,
-        NetworkManagement::{IpHelper::IP_ADAPTER_ADDRESSES_LH, Ndis::NET_LUID_LH},
+        NetworkManagement::{
+            IpHelper::{ConvertLengthToIpv4Mask, IP_ADAPTER_ADDRESSES_LH},
+            Ndis::NET_LUID_LH,
+        },
         System::{Com::CLSIDFromString, Threading::CreateEventA},
     },
 };
@@ -207,6 +217,45 @@ impl Adapter {
         })?;
 
         Ok(adapter_addresses)
+    }
+
+    pub fn get_netmask_of_address(&self, target_address: &IpAddr) -> Result<IpAddr, Error> {
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
+        let mut subnet_mask = None;
+        util::get_adapters_addresses(|adapter| {
+            let name_iter = unsafe { adapter.AdapterName.to_string()? };
+            if name_iter == name {
+                let mut current_address = adapter.FirstUnicastAddress;
+                while !current_address.is_null() {
+                    let address = unsafe { (*current_address).Address };
+                    let address = util::retrieve_ipaddr_from_socket_address(&address);
+                    if let Err(ref err) = address {
+                        log::warn!("Failed to parse address: {}", err);
+                    }
+                    let address = address?;
+                    if address == *target_address {
+                        let masklength = unsafe { (*current_address).OnLinkPrefixLength };
+                        match address {
+                            IpAddr::V4(_) => {
+                                let mut mask = 0_u32;
+                                unsafe { ConvertLengthToIpv4Mask(masklength as u32, &mut mask as *mut u32)? };
+                                subnet_mask = Some(IpAddr::V4(Ipv4Addr::from(mask.to_le_bytes())));
+                            }
+                            IpAddr::V6(_) => {
+                                subnet_mask = Some(IpAddr::V6(util::ipv6_netmask_for_prefix(masklength)?));
+                            }
+                        }
+                        break;
+                    }
+                    unsafe {
+                        current_address = (*current_address).Next;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+
+        Ok(subnet_mask.ok_or("Unable to find matching address")?)
     }
 }
 

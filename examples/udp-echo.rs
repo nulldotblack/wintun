@@ -91,6 +91,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let v = adapter.get_addresses()?;
     println!("adapter addresses: {v:?}");
 
+    for addr in &v {
+        let mask = adapter.get_netmask_of_address(addr)?;
+        println!("netmask: {}", mask);
+    }
+
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
     let reader_session = session.clone();
     let writer_session = session.clone();

@@ -36,6 +36,26 @@ pub(crate) fn guid_to_win_style_string(guid: &GUID) -> Result<String, Error> {
     Ok(guid)
 }
 
+pub(crate) fn ipv6_netmask_for_prefix(prefix: u8) -> Result<Ipv6Addr, &'static str> {
+    if prefix > 128 {
+        return Err("Prefix value must be between 0 and 128.");
+    }
+    let mut mask: [u16; 8] = [0; 8];
+    let mut i = 0;
+    let mut remaining = prefix;
+    while remaining >= 16 {
+        mask[i] = 0xffff;
+        remaining -= 16;
+        i += 1;
+    }
+    if remaining > 0 {
+        mask[i] = (0xffff << (16 - remaining)) & 0xffff;
+    }
+    Ok(Ipv6Addr::new(
+        mask[0], mask[1], mask[2], mask[3], mask[4], mask[5], mask[6], mask[7],
+    ))
+}
+
 pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> Result<IpAddr, Error> {
     let sock_addr = address.lpSockaddr;
     let len = address.iSockaddrLength as usize;
