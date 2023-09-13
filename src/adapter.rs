@@ -13,6 +13,7 @@ use std::{
     ffi::OsStr,
     net::{IpAddr, Ipv4Addr},
     os::windows::prelude::OsStrExt,
+    process::Command,
     ptr,
     sync::Arc,
     sync::OnceLock,
@@ -34,7 +35,6 @@ pub struct Adapter {
     adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
     wintun: Wintun,
     guid: u128,
-    name: String,
 }
 
 fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
@@ -44,8 +44,34 @@ fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE)
 }
 
 impl Adapter {
-    pub fn get_name(&self) -> &str {
-        &self.name
+    pub fn get_name(&self) -> Result<String, Error> {
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
+        let mut friendly_name = None;
+
+        util::get_adapters_addresses(|address| {
+            let name_iter = unsafe { address.AdapterName.to_string()? };
+            if name_iter == name {
+                friendly_name = unsafe { Some(address.FriendlyName.to_string()?) };
+            }
+            Ok(())
+        })?;
+        friendly_name.ok_or(format!("Unable to find matching {}", name).into())
+    }
+
+    pub fn set_name(&self, name: &str) -> Result<(), Error> {
+        // use command `netsh interface set interface name="oldname" newname="mynewname"`
+        let old_name = self.get_name()?;
+        let out = Command::new("netsh")
+            .arg("interface")
+            .arg("set")
+            .arg("interface")
+            .arg(format!("name=\"{}\"", old_name).as_str())
+            .arg(format!("newname=\"{}\"", name).as_str())
+            .output()?;
+        if !out.status.success() {
+            return Err(format!("Failed to set name: {}", String::from_utf8_lossy(&out.stderr)).into());
+        }
+        Ok(())
     }
 
     pub fn get_guid(&self) -> u128 {
@@ -60,11 +86,8 @@ impl Adapter {
     /// Adapters obtained via this function will be able to return their adapter index via
     /// [`Adapter::get_adapter_index`]
     pub fn create(wintun: &Wintun, name: &str, tunnel_type: &str, guid: Option<u128>) -> Result<Arc<Adapter>, Error> {
-        let name_utf16: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
-        let tunnel_type_utf16: Vec<u16> = OsStr::new(tunnel_type)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
+        let name_utf16: Vec<_> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let tunnel_type_utf16: Vec<u16> = tunnel_type.encode_utf16().chain(std::iter::once(0)).collect();
 
         let guid = match guid {
             Some(guid) => guid,
@@ -85,7 +108,6 @@ impl Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
-                name: name.to_string(),
             }))
         }
     }
@@ -126,7 +148,6 @@ impl Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
-                name: name.to_string(),
             }))
         }
     }
@@ -189,6 +210,32 @@ impl Adapter {
             Ok(())
         })?;
         adapter_index.ok_or(format!("Unable to find matching {}", name).into())
+    }
+
+    pub fn set_address(&self, address: Ipv4Addr) -> Result<(), Error> {
+        let name = self.get_name()?;
+        let binding = self.get_addresses()?;
+        let old_address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
+        let mask = match old_address {
+            Some(IpAddr::V4(addr)) => self.get_netmask_of_address(&(*addr).into())?,
+            _ => "255.255.255.0".parse()?,
+        };
+        // Command line: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" source=static address=IP_ADDRESS mask=SUBNET_MASK gateway=GATEWAY`
+        // or shorter command: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" static IP_ADDRESS SUBNET_MASK GATEWAY`
+        // for example: `netsh interface ipv4 set address name="Wi-Fi" static 192.168.3.8 255.255.255.0 192.168.3.1`
+        let out = Command::new("netsh")
+            .arg("interface")
+            .arg("ipv4")
+            .arg("set")
+            .arg("address")
+            .arg(format!("name=\"{}\"", name).as_str())
+            .arg(format!("address={}", address).as_str())
+            .arg(format!("mask={}", mask).as_str())
+            .output()?;
+        if !out.status.success() {
+            return Err(format!("Failed to set address: {}", String::from_utf8_lossy(&out.stderr)).into());
+        }
+        Ok(())
     }
 
     pub fn get_addresses(&self) -> Result<Vec<IpAddr>, Error> {

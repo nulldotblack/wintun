@@ -49,7 +49,7 @@ pub(crate) fn ipv6_netmask_for_prefix(prefix: u8) -> Result<Ipv6Addr, &'static s
         i += 1;
     }
     if remaining > 0 {
-        mask[i] = (0xffff << (16 - remaining)) & 0xffff;
+        mask[i] = 0xffff << (16 - remaining);
     }
     Ok(Ipv6Addr::new(
         mask[0], mask[1], mask[2], mask[3], mask[4], mask[5], mask[6], mask[7],

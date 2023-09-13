@@ -96,6 +96,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("netmask: {}", mask);
     }
 
+    adapter.set_name("MyNewName")?;
+    println!("adapter name: {}", adapter.get_name()?);
+
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
     let reader_session = session.clone();
     let writer_session = session.clone();
