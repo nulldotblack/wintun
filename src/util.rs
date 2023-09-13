@@ -1,6 +1,8 @@
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
 use crate::Error;
 use windows::{
-    core::{PCWSTR, PWSTR},
+    core::{GUID, PCWSTR, PWSTR},
     Win32::{
         Foundation::{
             GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, HLOCAL, NO_ERROR, WIN32_ERROR,
@@ -9,8 +11,9 @@ use windows::{
             GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_PREFIX, IP_ADAPTER_ADDRESSES_LH,
             IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
         },
-        Networking::WinSock::AF_UNSPEC,
+        Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKET_ADDRESS},
         System::{
+            Com::StringFromGUID2,
             Diagnostics::Debug::{FormatMessageW, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM},
             SystemServices::{LANG_NEUTRAL, SUBLANG_DEFAULT},
         },
@@ -25,6 +28,31 @@ pub(crate) struct UnsafeHandle<T>(pub T);
 /// doesn't have the same mutable aliasing restrictions we have in Rust
 unsafe impl<T> Send for UnsafeHandle<T> {}
 unsafe impl<T> Sync for UnsafeHandle<T> {}
+
+pub(crate) fn guid_to_win_style_string(guid: &GUID) -> Result<String, Error> {
+    let mut buffer = [0u16; 40];
+    unsafe { StringFromGUID2(guid, &mut buffer) };
+    let guid = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
+    Ok(guid)
+}
+
+pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> Result<IpAddr, Error> {
+    let sock_addr = address.lpSockaddr;
+    let len = address.iSockaddrLength as usize;
+    let ad = unsafe { std::slice::from_raw_parts(sock_addr as *const u8, len) };
+    let address = match unsafe { (*sock_addr).sa_family } {
+        AF_INET => Some(IpAddr::from(TryInto::<[u8; 4]>::try_into(
+            ad.get(4..4 + std::mem::size_of::<Ipv4Addr>())
+                .ok_or(Error::from("No IPv4 address found"))?,
+        )?)),
+        AF_INET6 => Some(IpAddr::from(TryInto::<[u8; 16]>::try_into(
+            ad.get(8..8 + std::mem::size_of::<Ipv6Addr>())
+                .ok_or(Error::from("No IPv6 address found"))?,
+        )?)),
+        _ => None,
+    };
+    address.ok_or(Error::from("Unsupported address type"))
+}
 
 pub(crate) fn get_adapters_addresses<F>(mut callback: F) -> Result<(), Error>
 where
@@ -73,7 +101,7 @@ where
     //stack memory
     let result = unsafe { GetInterfaceInfo(None, &mut buf_len as *mut u32) };
     if result != NO_ERROR.0 && result != ERROR_INSUFFICIENT_BUFFER.0 {
-        let err_msg = format_message(result).map_err(|e| Error::from(e))?;
+        let err_msg = format_message(result).map_err(Error::from)?;
         log::error!("Failed to get interface info: {}", err_msg);
         return Err(format!("GetInterfaceInfo failed: {}", err_msg).into());
     }
@@ -104,7 +132,7 @@ where
         )
     };
     if result != NO_ERROR.0 {
-        let err_msg = format_message(result).map_err(|e| Error::from(e))?;
+        let err_msg = format_message(result).map_err(Error::from)?;
         //TODO: maybe over allocate the buffer in case the needed size changes between the two
         //calls to GetInterfaceInfo if another adapter is added
         log::error!(
@@ -176,7 +204,7 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
             None,
             error_code,
             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-            PWSTR(std::mem::transmute(&buf)),
+            PWSTR(&buf as *const windows::core::PWSTR as *mut u16),
             0,
             None,
         )

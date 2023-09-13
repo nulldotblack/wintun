@@ -9,18 +9,13 @@ use crate::{
     util::{self, UnsafeHandle},
     wintun_raw, Wintun,
 };
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::{ffi::OsStr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock};
+use std::{ffi::OsStr, net::IpAddr, os::windows::prelude::OsStrExt, ptr, sync::Arc, sync::OnceLock};
 use windows::{
     core::{GUID, PCSTR, PCWSTR},
     Win32::{
         Foundation::FALSE,
         NetworkManagement::{IpHelper::IP_ADAPTER_ADDRESSES_LH, Ndis::NET_LUID_LH},
-        Networking::WinSock::{AF_INET, AF_INET6},
-        System::{
-            Com::{CLSIDFromString, StringFromGUID2},
-            Threading::CreateEventA,
-        },
+        System::{Com::CLSIDFromString, Threading::CreateEventA},
     },
 };
 
@@ -172,11 +167,7 @@ impl Adapter {
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, Error> {
-        let name = GUID::from_u128(self.guid);
-        let mut buffer = [0u16; 40];
-        unsafe { StringFromGUID2(&name, &mut buffer) };
-        let name = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
-
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut adapter_index = None;
 
         util::get_adapters_addresses(|address| {
@@ -191,10 +182,7 @@ impl Adapter {
     }
 
     pub fn get_addresses(&self) -> Result<Vec<IpAddr>, Error> {
-        let name = GUID::from_u128(self.guid);
-        let mut buffer = [0u16; 40];
-        unsafe { StringFromGUID2(&name, &mut buffer) };
-        let name = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
 
         let mut adapter_addresses = vec![];
 
@@ -204,22 +192,11 @@ impl Adapter {
                 let mut current_address = adapter.FirstUnicastAddress;
                 while !current_address.is_null() {
                     let address = unsafe { (*current_address).Address };
-                    let sock_addr = address.lpSockaddr;
-                    let len = address.iSockaddrLength as usize;
-                    let ad = unsafe { std::slice::from_raw_parts(sock_addr as *const u8, len) };
-                    let address = match unsafe { (*sock_addr).sa_family } {
-                        AF_INET => Some(IpAddr::from(TryInto::<[u8; 4]>::try_into(
-                            ad.get(4..4 + std::mem::size_of::<Ipv4Addr>())
-                                .ok_or(Error::from("No IPv4 address"))?,
-                        )?)),
-                        AF_INET6 => Some(IpAddr::from(TryInto::<[u8; 16]>::try_into(
-                            ad.get(8..8 + std::mem::size_of::<Ipv6Addr>())
-                                .ok_or(Error::from("No IPv6 address"))?,
-                        )?)),
-                        _ => None,
-                    };
-                    if let Some(address) = address {
-                        adapter_addresses.push(address);
+                    let address = util::retrieve_ipaddr_from_socket_address(&address);
+                    if let Err(err) = address {
+                        log::warn!("Failed to parse address: {}", err);
+                    } else {
+                        adapter_addresses.push(address?);
                     }
                     unsafe {
                         current_address = (*current_address).Next;
