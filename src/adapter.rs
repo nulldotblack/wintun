@@ -44,6 +44,8 @@ fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE)
 }
 
 impl Adapter {
+    /// Returns the `Friendly Name` of this adapter,
+    /// which is the human readable name that shows up in the Windows
     pub fn get_name(&self) -> Result<String, Error> {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut friendly_name = None;
@@ -58,6 +60,9 @@ impl Adapter {
         friendly_name.ok_or(format!("Unable to find matching {}", name).into())
     }
 
+    /// Sets the `Friendly Name` of this adapter, which is the name that shows up in the Windows
+    /// and a human readable name.
+    /// Note: This name is not `Adapter Name` internally which is a GUID.
     pub fn set_name(&self, name: &str) -> Result<(), Error> {
         // use command `netsh interface set interface name="oldname" newname="mynewname"`
         let old_name = self.get_name()?;
@@ -77,8 +82,6 @@ impl Adapter {
     pub fn get_guid(&self) -> u128 {
         self.guid
     }
-
-    //TODO: Call get last error for error information on failure and improve error types
 
     /// Creates a new wintun adapter inside the name `name` with tunnel type `tunnel_type`
     ///
@@ -212,6 +215,7 @@ impl Adapter {
         adapter_index.ok_or(format!("Unable to find matching {}", name).into())
     }
 
+    /// Sets the IP address for this adapter, using command `netsh`.
     pub fn set_address(&self, address: Ipv4Addr) -> Result<(), Error> {
         let binding = self.get_addresses()?;
         let old_address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
@@ -219,10 +223,16 @@ impl Adapter {
             Some(IpAddr::V4(addr)) => self.get_netmask_of_address(&(*addr).into())?,
             _ => "255.255.255.0".parse()?,
         };
-        self.set_network_addresses(address.into(), mask, None)?;
+        let gateway = self
+            .get_gateways()?
+            .iter()
+            .find(|addr| matches!(addr, IpAddr::V4(_)))
+            .cloned();
+        self.set_network_addresses(address.into(), mask, gateway)?;
         Ok(())
     }
 
+    /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
     pub fn set_network_addresses(&self, address: IpAddr, mask: IpAddr, gateway: Option<IpAddr>) -> Result<(), Error> {
         let name = self.get_name()?;
         // Command line: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" source=static address=IP_ADDRESS mask=SUBNET_MASK gateway=GATEWAY`
@@ -248,6 +258,7 @@ impl Adapter {
         Ok(())
     }
 
+    /// Returns the IP addresses of this adapter, including IPv4 and IPv6 addresses
     pub fn get_addresses(&self) -> Result<Vec<IpAddr>, Error> {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
 
@@ -261,7 +272,7 @@ impl Adapter {
                     let address = unsafe { (*current_address).Address };
                     let address = util::retrieve_ipaddr_from_socket_address(&address);
                     if let Err(err) = address {
-                        log::warn!("Failed to parse address: {}", err);
+                        log::error!("Failed to parse address: {}", err);
                     } else {
                         adapter_addresses.push(address?);
                     }
@@ -276,6 +287,33 @@ impl Adapter {
         Ok(adapter_addresses)
     }
 
+    /// Returns the gateway addresses of this adapter, including IPv4 and IPv6 addresses
+    pub fn get_gateways(&self) -> Result<Vec<IpAddr>, Error> {
+        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
+        let mut gateways = vec![];
+        util::get_adapters_addresses(|adapter| {
+            let name_iter = unsafe { adapter.AdapterName.to_string()? };
+            if name_iter == name {
+                let mut current_gateway = adapter.FirstGatewayAddress;
+                while !current_gateway.is_null() {
+                    let gateway = unsafe { (*current_gateway).Address };
+                    let gateway = util::retrieve_ipaddr_from_socket_address(&gateway);
+                    if let Err(err) = gateway {
+                        log::error!("Failed to parse gateway: {}", err);
+                    } else {
+                        gateways.push(gateway?);
+                    }
+                    unsafe {
+                        current_gateway = (*current_gateway).Next;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+        Ok(gateways)
+    }
+
+    /// Returns the subnet mask of the given address
     pub fn get_netmask_of_address(&self, target_address: &IpAddr) -> Result<IpAddr, Error> {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut subnet_mask = None;
