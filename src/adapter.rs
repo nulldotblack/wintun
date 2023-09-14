@@ -213,25 +213,35 @@ impl Adapter {
     }
 
     pub fn set_address(&self, address: Ipv4Addr) -> Result<(), Error> {
-        let name = self.get_name()?;
         let binding = self.get_addresses()?;
         let old_address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
         let mask = match old_address {
             Some(IpAddr::V4(addr)) => self.get_netmask_of_address(&(*addr).into())?,
             _ => "255.255.255.0".parse()?,
         };
+        self.set_network_addresses(address.into(), mask, None)?;
+        Ok(())
+    }
+
+    pub fn set_network_addresses(&self, address: IpAddr, mask: IpAddr, gateway: Option<IpAddr>) -> Result<(), Error> {
+        let name = self.get_name()?;
         // Command line: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" source=static address=IP_ADDRESS mask=SUBNET_MASK gateway=GATEWAY`
         // or shorter command: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" static IP_ADDRESS SUBNET_MASK GATEWAY`
         // for example: `netsh interface ipv4 set address name="Wi-Fi" static 192.168.3.8 255.255.255.0 192.168.3.1`
-        let out = Command::new("netsh")
+        let mut binding = Command::new("netsh");
+        let mut cmd = binding
             .arg("interface")
-            .arg("ipv4")
+            .arg(if address.is_ipv4() { "ipv4" } else { "ipv6" })
             .arg("set")
             .arg("address")
             .arg(format!("name=\"{}\"", name).as_str())
+            .arg("source=static")
             .arg(format!("address={}", address).as_str())
-            .arg(format!("mask={}", mask).as_str())
-            .output()?;
+            .arg(format!("mask={}", mask).as_str());
+        if let Some(gateway) = gateway {
+            cmd = cmd.arg(format!("gateway={}", gateway).as_str());
+        }
+        let out = cmd.output()?;
         if !out.status.success() {
             return Err(format!("Failed to set address: {}", String::from_utf8_lossy(&out.stderr)).into());
         }
