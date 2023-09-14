@@ -8,8 +8,8 @@ use windows::{
             GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, HLOCAL, NO_ERROR, WIN32_ERROR,
         },
         NetworkManagement::IpHelper::{
-            GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_PREFIX, IP_ADAPTER_ADDRESSES_LH,
-            IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
+            GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_INCLUDE_PREFIX,
+            IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
         },
         Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKET_ADDRESS},
         System::{
@@ -79,7 +79,7 @@ where
     F: FnMut(IP_ADAPTER_ADDRESSES_LH) -> Result<(), Error>,
 {
     let mut size = 0;
-    let flags = GAA_FLAG_INCLUDE_PREFIX;
+    let flags = GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS;
     let family = AF_UNSPEC.0 as u32;
 
     // Make an initial call to GetAdaptersAddresses to get the

@@ -228,12 +228,48 @@ impl Adapter {
             .iter()
             .find(|addr| matches!(addr, IpAddr::V4(_)))
             .cloned();
-        self.set_network_addresses(address.into(), mask, gateway)?;
+        self.set_network_addresses_tuple(address.into(), mask, gateway)?;
+        Ok(())
+    }
+
+    /// Sets the gateway for this adapter, using command `netsh`.
+    pub fn set_gateway(&self, gateway: Option<Ipv4Addr>) -> Result<(), Error> {
+        let binding = self.get_addresses()?;
+        let address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
+        let address = match address {
+            Some(IpAddr::V4(addr)) => addr,
+            _ => return Err("Unable to find IPv4 address".into()),
+        };
+        let mask = self.get_netmask_of_address(&(*address).into())?;
+        let gateway = gateway.map(|addr| addr.into());
+        self.set_network_addresses_tuple((*address).into(), mask, gateway)?;
+        Ok(())
+    }
+
+    /// Sets the subnet mask for this adapter, using command `netsh`.
+    pub fn set_netmask(&self, mask: Ipv4Addr) -> Result<(), Error> {
+        let binding = self.get_addresses()?;
+        let address = binding.iter().find(|addr| matches!(addr, IpAddr::V4(_)));
+        let address = match address {
+            Some(IpAddr::V4(addr)) => addr,
+            _ => return Err("Unable to find IPv4 address".into()),
+        };
+        let gateway = self
+            .get_gateways()?
+            .iter()
+            .find(|addr| matches!(addr, IpAddr::V4(_)))
+            .cloned();
+        self.set_network_addresses_tuple((*address).into(), mask.into(), gateway)?;
         Ok(())
     }
 
     /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
-    pub fn set_network_addresses(&self, address: IpAddr, mask: IpAddr, gateway: Option<IpAddr>) -> Result<(), Error> {
+    pub fn set_network_addresses_tuple(
+        &self,
+        address: IpAddr,
+        mask: IpAddr,
+        gateway: Option<IpAddr>,
+    ) -> Result<(), Error> {
         let name = self.get_name()?;
         // Command line: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" source=static address=IP_ADDRESS mask=SUBNET_MASK gateway=GATEWAY`
         // or shorter command: `netsh interface ipv4 set address name="YOUR_INTERFACE_NAME" static IP_ADDRESS SUBNET_MASK GATEWAY`
