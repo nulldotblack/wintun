@@ -5,6 +5,11 @@ Safe rust idiomatic bindings for the Wintun C library: <https://wintun.net>
 All features of the Wintun library are wrapped using pure rust types and functions to make
 usage feel ergonomic.
 
+[![Version](https://img.shields.io/crates/v/wintun.svg?style=flat)](https://crates.io/crates/wintun)
+[![Documentation](https://img.shields.io/badge/docs-release-brightgreen.svg?style=flat)](https://docs.rs/wintun)
+[![Download](https://img.shields.io/crates/d/wintun.svg)](https://crates.io/crates/wintun)
+[![License](https://img.shields.io/crates/l/wintun.svg?style=flat)](https://github.com/ssrlive/wintun/blob/master/LICENSE)
+
 ## Usage
 
 Inside your code load the wintun.dll signed driver file, downloaded from <https://wintun.net>,
