@@ -3,6 +3,25 @@
 This format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org).
 
+
+## [0.3.0] - 2023-09-15
+
+### Added
+- udp-echo example which mirrors packets via the tun interface
+- `Adapter::get_name`, `Adapter::set_name`, and `Adapter::get_guid`
+- `Adapter::set_address` `Adapter::set_gateway`, `Adapter::set_netmask`, or `Adapter::set_network_addresses_tuple` to set all three at once
+  - Easily configure adapter address, netmask, and gateway properties to more easily control how it interacts with the Windows networking stack
+- And `Adapter::get_addresses`, `Adapter::get_gateways`, `Adapter::get_netmask_of_address` to read this state
+
+### Breaking Changes
+
+- Renamed `enum ApiError` -> `enum Error` and added more variants.
+  - All functions returning `wintun::Result` are effected.
+- Removed `pool: &str` parameter from `Adapter::create` as this was removed from the wintun c library
+- Changed return type of `Session::get_read_wait_event` from `Result<winnt::HANDLE, ()>` to `Result<windows::Win32::HANDLE, wintun::Error>`
+
+Plus internal refactoring and cleanup by @ssrlive: https://github.com/nulldotblack/wintun/pull/7. Thanks!
+
 ## [0.2.1] - 2021-12-03
 
 ### Fixed
