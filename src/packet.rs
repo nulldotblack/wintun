@@ -1,5 +1,4 @@
 use crate::session;
-
 use std::sync::Arc;
 
 pub(crate) enum Kind {
@@ -12,33 +11,33 @@ pub(crate) enum Kind {
 pub struct Packet {
     pub(crate) kind: Kind,
 
-    //This lifetime is not actually 'static, however before you get your pitchforks let me explain...
-    //The bytes in this slice live for as long at the session that allocated them, or until
-    //WintunReleaseReceivePacket, or WintunSendPacket is called on them (whichever happens first).
-    //The wrapper functions that call into WintunReleaseReceivePacket, and WintunSendPacket
-    //consume the packet, meaning the end of this packet's lifetime coincides with the end of byte's
-    //lifetime. Because we never copy out of bytes, this pointer becomes inaccessible when the
-    //packet is dropped.
-    //
-    //This just leaves packets potentially outliving the session that allocated them posing a
-    //problem.
-    //Fortunately we have an Arc to the session that allocated this packet, meaning that the lifetime
-    //of the session that created this packet is at least as long as the packet.
-    //Because this is private (to external users) and we only write to this field when allocating
-    //new packets, it is impossible for the memory that is pointed to by bytes to outlive the
-    //underlying memory allocated by wintun.
-    //
-    //So what I told you was true, from a certain point of view.
-    //From the point of view of this packet, bytes' lifetime is 'static because we are always
-    //dropped before the underlying memory is freed
-    //
-    //Its also important to know that WintunAllocateSendPacket and WintunReceivePacket always
-    //return sections of memory that never overlap, so we have exclusive access to the memory,
-    //therefore mut is okay here.
+    /// This lifetime is not actually 'static, however before you get your pitchforks let me explain...
+    /// The bytes in this slice live for as long at the session that allocated them, or until
+    /// WintunReleaseReceivePacket, or WintunSendPacket is called on them (whichever happens first).
+    /// The wrapper functions that call into WintunReleaseReceivePacket, and WintunSendPacket
+    /// consume the packet, meaning the end of this packet's lifetime coincides with the end of byte's
+    /// lifetime. Because we never copy out of bytes, this pointer becomes inaccessible when the
+    /// packet is dropped.
+    ///
+    /// This just leaves packets potentially outliving the session that allocated them posing a
+    /// problem.
+    /// Fortunately we have an Arc to the session that allocated this packet, meaning that the lifetime
+    /// of the session that created this packet is at least as long as the packet.
+    /// Because this is private (to external users) and we only write to this field when allocating
+    /// new packets, it is impossible for the memory that is pointed to by bytes to outlive the
+    /// underlying memory allocated by wintun.
+    ///
+    /// So what I told you was true, from a certain point of view.
+    /// From the point of view of this packet, bytes' lifetime is 'static because we are always
+    /// dropped before the underlying memory is freed
+    ///
+    /// Its also important to know that WintunAllocateSendPacket and WintunReceivePacket always
+    /// return sections of memory that never overlap, so we have exclusive access to the memory,
+    /// therefore mut is okay here.
     pub(crate) bytes: &'static mut [u8],
 
-    //Share ownership of session to prevent the session from being dropped before packets that
-    //belong to it
+    /// Share ownership of session to prevent the session from being dropped before packets that
+    /// belong to it
     pub(crate) session: Arc<session::Session>,
 }
 

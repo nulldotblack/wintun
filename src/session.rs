@@ -1,22 +1,13 @@
-extern crate winapi;
-
-use crate::packet;
-use crate::util::UnsafeHandle;
-use crate::wintun_raw;
-use crate::Adapter;
-use crate::Wintun;
-
-use once_cell::sync::OnceCell;
-
-use winapi::shared::winerror;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::handleapi;
-use winapi::um::synchapi;
-use winapi::um::winbase;
-use winapi::um::winnt;
-
-use std::sync::Arc;
-use std::{ptr, slice};
+use crate::{
+    packet,
+    util::{self, UnsafeHandle},
+    wintun_raw, Adapter, Error, Wintun,
+};
+use std::{ptr, slice, sync::Arc, sync::OnceLock};
+use windows::Win32::{
+    Foundation::{CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
+    System::Threading::{SetEvent, WaitForMultipleObjects, INFINITE},
+};
 
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_session_handle>
 pub struct Session {
@@ -28,17 +19,21 @@ pub struct Session {
 
     /// Windows event handle that is signaled by the wintun driver when data becomes available to
     /// read
-    pub(crate) read_event: OnceCell<UnsafeHandle<winnt::HANDLE>>,
+    pub(crate) read_event: OnceLock<HANDLE>,
 
     /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
     /// readers to exit
-    pub(crate) shutdown_event: UnsafeHandle<winnt::HANDLE>,
+    pub(crate) shutdown_event: HANDLE,
 
     /// The adapter that owns this session
     pub(crate) adapter: Arc<Adapter>,
 }
 
 impl Session {
+    pub fn get_adapter(&self) -> Arc<Adapter> {
+        self.adapter.clone()
+    }
+
     /// Allocates a send packet of the specified size. Wraps WintunAllocateSendPacket
     ///
     /// All packets returned from this function must be sent using [`Session::send_packet`] because
@@ -46,13 +41,10 @@ impl Session {
     /// Therefore if a packet is allocated using this function, and then never sent, it will hold
     /// up the send queue for all other packets allocated in the future. It is okay for the session
     /// to shutdown with allocated packets that have not yet been sent
-    pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, ()> {
-        let ptr = unsafe {
-            self.wintun
-                .WintunAllocateSendPacket(self.session.0, size as u32)
-        };
+    pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, Error> {
+        let ptr = unsafe { self.wintun.WintunAllocateSendPacket(self.session.0, size as u32) };
         if ptr.is_null() {
-            Err(())
+            Err(Error::from(util::get_last_error()))
         } else {
             Ok(packet::Packet {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -68,10 +60,7 @@ impl Session {
     pub fn send_packet(&self, mut packet: packet::Packet) {
         assert!(matches!(packet.kind, packet::Kind::SendPacketPending));
 
-        unsafe {
-            self.wintun
-                .WintunSendPacket(self.session.0, packet.bytes.as_ptr())
-        };
+        unsafe { self.wintun.WintunSendPacket(self.session.0, packet.bytes.as_ptr()) };
         //Mark the packet at sent
         packet.kind = packet::Kind::SendPacketSent;
     }
@@ -79,22 +68,22 @@ impl Session {
     /// Attempts to receive a packet from the virtual interface without blocking.
     /// If there are no packets currently in the receive queue, this function returns Ok(None)
     /// without blocking. If blocking until a packet is desirable, use [`Session::receive_blocking`]
-    pub fn try_receive(self: &Arc<Self>) -> Result<Option<packet::Packet>, ()> {
+    pub fn try_receive(self: &Arc<Self>) -> Result<Option<packet::Packet>, Error> {
         let mut size = 0u32;
 
-        let ptr = unsafe {
-            self.wintun
-                .WintunReceivePacket(self.session.0, &mut size as *mut u32)
-        };
+        let ptr = unsafe { self.wintun.WintunReceivePacket(self.session.0, &mut size as *mut u32) };
 
         debug_assert!(size <= u16::MAX as u32);
         if ptr.is_null() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
-            let last_error = unsafe { GetLastError() };
-            if last_error == winerror::ERROR_NO_MORE_ITEMS {
-                Ok(None)
+            if let Err(last_error) = unsafe { GetLastError() } {
+                if last_error.code() == ERROR_NO_MORE_ITEMS.to_hresult() {
+                    Ok(None)
+                } else {
+                    Err(last_error.into())
+                }
             } else {
-                Err(())
+                Err("Unknow error".into())
             }
         } else {
             Ok(Some(packet::Packet {
@@ -109,19 +98,16 @@ impl Session {
 
     /// Returns the low level read event handle that is signaled when more data becomes available
     /// to read
-    pub(crate) fn get_read_wait_event(&self) -> Result<winnt::HANDLE, ()> {
-        Ok(self
+    pub fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
+        Ok(*self
             .read_event
-            .get_or_init(|| unsafe {
-                UnsafeHandle(self.wintun.WintunGetReadWaitEvent(self.session.0) as winnt::HANDLE)
-            })
-            .0)
+            .get_or_init(|| unsafe { HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _) }))
     }
 
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
     /// If the session is closed via [`Session::shutdown`] all threads currently blocking inside this function
     /// will return Err(())
-    pub fn receive_blocking(self: &Arc<Self>) -> Result<packet::Packet, ()> {
+    pub fn receive_blocking(self: &Arc<Self>) -> Result<packet::Packet, Error> {
         loop {
             //Try 5 times to receive without blocking so we don't have to issue a syscall to wait
             //for the event if packets are being received at a rapid rate
@@ -136,26 +122,22 @@ impl Session {
                 }
             }
             //Wait on both the read handle and the shutdown handle so that we stop when requested
-            let handles = [self.get_read_wait_event()?, self.shutdown_event.0];
+            let handles = [self.get_read_wait_event()?, self.shutdown_event];
             let result = unsafe {
                 //SAFETY: We abide by the requirements of WaitForMultipleObjects, handles is a
                 //pointer to valid, aligned, stack memory
-                synchapi::WaitForMultipleObjects(
-                    2,
-                    &handles as *const winnt::HANDLE,
-                    0,
-                    winbase::INFINITE,
-                )
+                WaitForMultipleObjects(&handles, FALSE, INFINITE)
             };
             match result {
-                winbase::WAIT_FAILED => return Err(()),
+                WAIT_FAILED => return Err(Error::from(util::get_last_error())),
                 _ => {
-                    if result == winbase::WAIT_OBJECT_0 {
+                    if result == WAIT_OBJECT_0 {
                         //We have data!
                         continue;
-                    } else if result == winbase::WAIT_OBJECT_0 + 1 {
+                    } else if result.0 == WAIT_OBJECT_0.0 + 1 {
                         //Shutdown event triggered
-                        return Err(());
+                        let err = format!("Session {:?} shuting down", self.session);
+                        return Err(Error::from(err));
                     }
                 }
             }
@@ -163,20 +145,19 @@ impl Session {
     }
 
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
-    pub fn shutdown(&self) {
-        let _ = unsafe { synchapi::SetEvent(self.shutdown_event.0) };
-        let _ = unsafe { handleapi::CloseHandle(self.shutdown_event.0) };
+    pub fn shutdown(&self) -> Result<(), Error> {
+        unsafe { SetEvent(self.shutdown_event)? };
+        Ok(())
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let _ = Arc::clone(&self.adapter);
+        if let Err(err) = unsafe { CloseHandle(self.shutdown_event) } {
+            log::error!("Failed to close handle of shutdown event: {:?}", err);
+        }
+
         unsafe { self.wintun.WintunEndSession(self.session.0) };
         self.session.0 = ptr::null_mut();
-
-        //Adapter must be dropped after we call `WintunEndSession`,
-        //if `self.adapter is the last reference
-        //drop(self.adapter)
     }
 }

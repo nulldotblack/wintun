@@ -30,17 +30,14 @@ jobs:
     name: Clippy Check
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v1
-      - id: component
-        uses: actions-rs/components-nightly@v1
-        with:
-          component: clippy
+      - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-            toolchain: ${{ steps.component.outputs.toolchain }}
-            override: true
+          profile: minimal
+          toolchain: stable
+          override: true
       - run: rustup component add clippy
-      - uses: actions-rs/clippy-check@v1
+      - uses: actions-rs/cargo@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          command: clippy
+          args: --all-features -- -D warnings

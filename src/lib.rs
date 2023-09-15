@@ -26,7 +26,7 @@
 //!     Ok(a) => a,
 //!     Err(_) => {
 //!         //If loading failed (most likely it didn't exist), create a new one
-//!         wintun::Adapter::create(&wintun, "Example", "Demo", None)
+//!         wintun::Adapter::create(&wintun, "Demo", "Example", None)
 //!             .expect("Failed to create wintun adapter!")
 //!     }
 //! };
@@ -93,12 +93,15 @@ mod util;
 )]
 mod wintun_raw;
 
-pub use crate::adapter::Adapter;
-pub use crate::error::{ApiError, OutOfRangeData, WintunError};
-pub use crate::log::{default_logger, reset_logger, set_logger};
-pub use crate::packet::Packet;
-pub use crate::session::Session;
-pub use crate::util::get_running_driver_version;
+pub use crate::{
+    adapter::Adapter,
+    error::{Error, OutOfRangeData, Result},
+    log::{default_logger, reset_logger, set_logger},
+    packet::Packet,
+    session::Session,
+    util::{format_message, get_running_driver_version, Version},
+};
+pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 
 // TODO: Get bindgen to scrape these from the `wintun.h`
 // We need to make sure these stay up to date
@@ -129,7 +132,7 @@ use std::sync::Arc;
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load() -> Result<Wintun, libloading::Error> {
+pub unsafe fn load() -> Result<Wintun, Error> {
     load_from_path("wintun")
 }
 
@@ -145,11 +148,11 @@ pub unsafe fn load() -> Result<Wintun, libloading::Error> {
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, libloading::Error>
+pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    check_version(wintun_raw::wintun::new(path)?)
+    unsafe { Ok(Arc::new(wintun_raw::wintun::new(path)?)) }
 }
 
 /// Attempts to load the Wintun library from an existing [`libloading::Library`].
@@ -162,13 +165,9 @@ where
 /// is inherently unsafe.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading::Library::new`]
-pub unsafe fn load_from_library<L>(library: L) -> Result<Wintun, libloading::Error>
+pub unsafe fn load_from_library<L>(library: L) -> Result<Wintun, Error>
 where
     L: Into<libloading::Library>,
 {
-    check_version(wintun_raw::wintun::from_library(library)?)
-}
-
-fn check_version(lib: wintun_raw::wintun) -> Result<Wintun, libloading::Error> {
-    Ok(Arc::new(lib))
+    unsafe { Ok(Arc::new(wintun_raw::wintun::from_library(library)?)) }
 }
