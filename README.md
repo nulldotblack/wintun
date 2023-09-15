@@ -8,7 +8,7 @@ usage feel ergonomic.
 [![Version](https://img.shields.io/crates/v/wintun.svg?style=flat)](https://crates.io/crates/wintun)
 [![Documentation](https://img.shields.io/badge/docs-release-brightgreen.svg?style=flat)](https://docs.rs/wintun)
 [![Download](https://img.shields.io/crates/d/wintun.svg)](https://crates.io/crates/wintun)
-[![License](https://img.shields.io/crates/l/wintun.svg?style=flat)](https://github.com/ssrlive/wintun/blob/master/LICENSE)
+[![License](https://img.shields.io/crates/l/wintun.svg?style=flat)](https://github.com/nulldotblack/wintun/blob/main/LICENSE)
 
 ## Usage
 

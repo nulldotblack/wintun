@@ -50,7 +50,7 @@ impl std::fmt::Display for NaiveUdpPacket {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     // Loading wintun
-    let wintun = wintun::load_from_path("wintun.dll")?;
+    let wintun = unsafe { wintun::load_from_path("wintun.dll")? };
 
     let version = wintun::get_running_driver_version(&wintun);
     println!("Wintun version: {:?}", version);
@@ -202,7 +202,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Press enter to stop session
+    println!("Press enter to stop session");
+
     let mut line = String::new();
     let _ = std::io::stdin().read_line(&mut line);
     println!("Shutting down session");

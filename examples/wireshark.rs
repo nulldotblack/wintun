@@ -68,7 +68,7 @@ impl RouteCmd {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let wintun = wintun::load_from_path("wintun/bin/amd64/wintun.dll")?;
+    let wintun = unsafe { wintun::load_from_path("wintun/bin/amd64/wintun.dll")? };
 
     let adapter = match wintun::Adapter::open(&wintun, "Demo") {
         Ok(a) => a,

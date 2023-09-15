@@ -17,7 +17,8 @@
 //!
 //! //Must be run as Administrator because we create network adapters
 //! //Load the wintun dll file so that we can call the underlying C functions
-//! let wintun = wintun::load_from_path("path/to/wintun.dll")
+//! //Unsafe because we are loading an arbitrary dll file
+//! let wintun = unsafe { wintun::load_from_path("path/to/wintun.dll") }
 //!     .expect("Failed to load wintun dll");
 //!
 //! //Try to open an adapter with the name "Demo"
@@ -131,7 +132,7 @@ use std::sync::Arc;
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub fn load() -> Result<Wintun, Error> {
+pub unsafe fn load() -> Result<Wintun, Error> {
     load_from_path("wintun")
 }
 
@@ -147,7 +148,7 @@ pub fn load() -> Result<Wintun, Error> {
 /// Hoverer one can never be too cautious when loading a dll file.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading`][`libloading::Library::new`]
-pub fn load_from_path<P>(path: P) -> Result<Wintun, Error>
+pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
@@ -164,7 +165,7 @@ where
 /// is inherently unsafe.
 ///
 /// For more information see [`libloading`]'s dynamic library safety guarantees: [`libloading::Library::new`]
-pub fn load_from_library<L>(library: L) -> Result<Wintun, Error>
+pub unsafe fn load_from_library<L>(library: L) -> Result<Wintun, Error>
 where
     L: Into<libloading::Library>,
 {
