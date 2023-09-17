@@ -17,6 +17,7 @@ use windows::{
     core::PCWSTR,
     Win32::Security::Cryptography::{CryptAcquireContextW, CryptGenRandom, CryptReleaseContext, PROV_RSA_FULL},
 };
+mod misc;
 
 #[derive(Debug)]
 struct NaiveUdpPacket {
@@ -50,7 +51,8 @@ impl std::fmt::Display for NaiveUdpPacket {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     // Loading wintun
-    let wintun = unsafe { wintun::load_from_path("wintun.dll")? };
+    let dll_path = misc::get_wintun_bin_relative_path()?;
+    let wintun = unsafe { wintun::load_from_path(dll_path)? };
 
     let version = wintun::get_running_driver_version(&wintun);
     println!("Wintun version: {:?}", version);
