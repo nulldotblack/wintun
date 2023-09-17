@@ -3,6 +3,13 @@
 This format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [0.3.1] - 2023-09-16
+
+## Added
+- Support for non 32bit x86 and arm targets in all three examples
+
+### Updated
+- Adapter docs
 
 ## [0.3.0] - 2023-09-15
 
