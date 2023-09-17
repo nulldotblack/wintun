@@ -238,13 +238,11 @@ fn extract_udp_packet(packet: &[u8]) -> Result<NaiveUdpPacket, wintun::Error> {
                 }
                 _ => {
                     info = format!("{:?} src={}, dst={}", protocol, src_addr, dst_addr);
-                    log::trace!("{}", info);
                 }
             }
         }
         ip::Packet::V6(a) => {
             info = format!("{:?}", a);
-            log::trace!("{}", info);
         }
     }
     Err(info.into())
