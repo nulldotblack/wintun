@@ -27,7 +27,7 @@ jobs:
         cargo fmt -- --check
 
   clippy_check:
-    name: Clippy Check
+    name: Clippy Check & Build
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
@@ -41,3 +41,7 @@ jobs:
         with:
           command: clippy
           args: --all-features -- -D warnings
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --examples --all-features

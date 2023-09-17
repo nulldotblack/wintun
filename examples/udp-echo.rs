@@ -17,6 +17,7 @@ use windows::{
     core::PCWSTR,
     Win32::Security::Cryptography::{CryptAcquireContextW, CryptGenRandom, CryptReleaseContext, PROV_RSA_FULL},
 };
+mod misc;
 
 #[derive(Debug)]
 struct NaiveUdpPacket {
@@ -50,7 +51,8 @@ impl std::fmt::Display for NaiveUdpPacket {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     // Loading wintun
-    let wintun = unsafe { wintun::load_from_path("wintun.dll")? };
+    let dll_path = misc::get_wintun_bin_relative_path()?;
+    let wintun = unsafe { wintun::load_from_path(dll_path)? };
 
     let version = wintun::get_running_driver_version(&wintun);
     println!("Wintun version: {:?}", version);
@@ -217,6 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn extract_udp_packet(packet: &[u8]) -> Result<NaiveUdpPacket, wintun::Error> {
     use packet::{ip, udp, AsPacket, Packet};
     let packet: ip::Packet<_> = packet.as_packet().map_err(|err| format!("{}", err))?;
+    let info: String;
     match packet {
         ip::Packet::V4(a) => {
             let src_addr = a.source();
@@ -236,15 +239,15 @@ fn extract_udp_packet(packet: &[u8]) -> Result<NaiveUdpPacket, wintun::Error> {
                     return Ok(udp_packet);
                 }
                 _ => {
-                    log::trace!("{:?} src={}, dst={}", protocol, src_addr, dst_addr);
+                    info = format!("{:?} src={}, dst={}", protocol, src_addr, dst_addr);
                 }
             }
         }
         ip::Packet::V6(a) => {
-            log::trace!("{:?}", a);
+            info = format!("{:?}", a);
         }
     }
-    Err(wintun::Error::from("faild in extract_udp_packet function"))
+    Err(info.into())
 }
 
 fn generate_random_bytes(len: usize) -> Result<Vec<u8>, windows::core::Error> {

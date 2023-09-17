@@ -25,7 +25,7 @@ use std::sync::Arc;
 //Must be run as Administrator because we create network adapters
 //Load the wintun dll file so that we can call the underlying C functions
 //Unsafe because we are loading an arbitrary dll file
-let wintun = wintun::load_from_path("path/to/wintun.dll")
+let wintun = unsafe { wintun::load_from_path("path/to/wintun.dll") }
     .expect("Failed to load wintun dll");
 
 //Try to open an adapter with the name "Demo"
