@@ -1,9 +1,7 @@
-//
-// This example demonstrates how to use Wintun to create a simple UDP echo server.
-// Running this example by command: `cargo run --example udp-echo`
-//
-// And testing command can be: `nc -u 10.28.13.100 4321`
-//
+//! This example demonstrates how to use Wintun to create a simple UDP echo server.
+//!
+//! You can see packets being received by wintun by runnig: `nc -u 10.28.13.100 4321`
+//! and sending lines of text.
 
 use std::{
     net::{IpAddr, SocketAddr},

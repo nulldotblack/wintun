@@ -45,7 +45,7 @@ fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE)
 
 impl Adapter {
     /// Returns the `Friendly Name` of this adapter,
-    /// which is the human readable name that shows up in the Windows
+    /// which is the human readable name shown in Windows
     pub fn get_name(&self) -> Result<String, Error> {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut friendly_name = None;
@@ -60,9 +60,10 @@ impl Adapter {
         friendly_name.ok_or(format!("Unable to find matching {}", name).into())
     }
 
-    /// Sets the `Friendly Name` of this adapter, which is the name that shows up in the Windows
-    /// and a human readable name.
-    /// Note: This name is not `Adapter Name` internally which is a GUID.
+    /// Sets the `Friendly Name` of this adapter,
+    /// which is the human readable name shown in Windows
+    ///
+    /// Note: This is different from `Adapter Name`, which is a GUID.
     pub fn set_name(&self, name: &str) -> Result<(), Error> {
         // use command `netsh interface set interface name="oldname" newname="mynewname"`
         let old_name = self.get_name()?;
