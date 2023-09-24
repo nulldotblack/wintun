@@ -105,6 +105,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // adapter.set_address("10.28.13.2".parse()?)?;
 
+    println!("adapter mtu: {}", adapter.get_mtu()?);
+
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
     let reader_session = session.clone();
     let writer_session = session.clone();
