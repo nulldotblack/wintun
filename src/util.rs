@@ -7,9 +7,13 @@ use windows::{
         Foundation::{
             GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, HLOCAL, NO_ERROR, WIN32_ERROR,
         },
-        NetworkManagement::IpHelper::{
-            GetAdaptersAddresses, GetInterfaceInfo, GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_INCLUDE_PREFIX,
-            IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO,
+        NetworkManagement::{
+            IpHelper::{
+                FreeMibTable, GetAdaptersAddresses, GetIfTable2, GetInterfaceInfo, GAA_FLAG_INCLUDE_GATEWAYS,
+                GAA_FLAG_INCLUDE_PREFIX, IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2,
+                MIB_IF_TABLE2,
+            },
+            Ndis::NET_LUID_LH,
         },
         Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKET_ADDRESS},
         System::{
@@ -272,4 +276,44 @@ pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, cra
             minor: u16::from_be_bytes([v[2], v[3]]),
         })
     }
+}
+
+pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
+    unsafe {
+        let mut if_table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
+        GetIfTable2(&mut if_table as *mut *mut _)?;
+
+        let num_entries = (*if_table).NumEntries as usize;
+        let mut mtu = None;
+
+        let luid = &luid.Info as *const _ as *const _NET_LUID_LH_INFO;
+
+        let table = &(*if_table).Table as *const MIB_IF_ROW2;
+        let table = std::slice::from_raw_parts(table, num_entries);
+
+        for if_row in table {
+            let info = &if_row.InterfaceLuid.Info as *const _ as *const _NET_LUID_LH_INFO;
+
+            if (*info).IfType() == (*luid).IfType() && (*info).NetLuidIndex() == (*luid).NetLuidIndex() {
+                mtu = Some(if_row.Mtu as usize);
+                break;
+            }
+        }
+
+        if let Err(e) = FreeMibTable(if_table as *mut _) {
+            log::trace!("Failed to free MIB table: {}", e);
+        }
+        mtu.ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Adapter not found"))
+    }
+}
+
+#[repr(C, align(1))]
+#[derive(c2rust_bitfields::BitfieldStruct)]
+#[allow(non_snake_case)]
+#[allow(non_camel_case_types)]
+struct _NET_LUID_LH_INFO {
+    #[bitfield(name = "Reserved", ty = "u64", bits = "0..=23")]
+    #[bitfield(name = "NetLuidIndex", ty = "u64", bits = "24..=47")]
+    #[bitfield(name = "IfType", ty = "u64", bits = "48..=63")]
+    _Value: [u8; 8],
 }

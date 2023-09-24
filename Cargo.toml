@@ -26,6 +26,7 @@ targets = [
 panic_on_unsent_packets = []
 
 [dependencies]
+c2rust-bitfields = "0.18"
 libloading = "0.8"
 log = "0.4"
 thiserror = "1.0"
@@ -40,6 +41,8 @@ windows = { version = "0.51", features = [
     "Win32_System_Com",
     "Win32_Security",
     "Win32_Foundation",
+    "Win32_System_Ioctl",
+    "Win32_System_IO",
 ] }
 
 [dev-dependencies]

@@ -199,6 +199,12 @@ impl Adapter {
         get_adapter_luid(&self.wintun, self.adapter.0)
     }
 
+    /// Returns `MTU` of this adapter
+    pub fn get_mtu(&self) -> Result<usize, Error> {
+        let luid = self.get_luid();
+        Ok(util::get_adapter_mtu(&luid)?)
+    }
+
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, Error> {
