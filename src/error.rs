@@ -8,7 +8,7 @@ pub struct OutOfRangeData<T> {
 /// Error type returned when preconditions of this API are broken
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("std::io::Error {0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
     #[error("CapacityNotPowerOfTwo {0}")]
@@ -20,31 +20,31 @@ pub enum Error {
     #[error("{0}")]
     String(String),
 
-    #[error("libloading {0}")]
+    #[error(transparent)]
     LibLoading(#[from] libloading::Error),
 
-    #[error("windows::core::Error {0}")]
+    #[error(transparent)]
     WindowsCore(#[from] windows::core::Error),
 
-    #[error("FromUtf16Error {0}")]
+    #[error(transparent)]
     FromUtf16Error(#[from] std::string::FromUtf16Error),
 
-    #[error("Utf8Error {0}")]
+    #[error(transparent)]
     Utf8Error(#[from] std::str::Utf8Error),
 
-    #[error("FromUtf8Error {0}")]
+    #[error(transparent)]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
 
-    #[error("AddrParseError {0}")]
+    #[error(transparent)]
     AddrParseError(#[from] std::net::AddrParseError),
 
-    #[error("SystemTimeError {0}")]
+    #[error(transparent)]
     SystemTimeError(#[from] std::time::SystemTimeError),
 
-    #[error("TryFromSliceError {0}")]
+    #[error(transparent)]
     TryFromSliceError(#[from] std::array::TryFromSliceError),
 
-    #[error("Infallible {0}")]
+    #[error(transparent)]
     Infallible(#[from] std::convert::Infallible),
 }
 
@@ -69,6 +69,15 @@ impl From<&str> for Error {
 impl From<Box<dyn std::error::Error>> for Error {
     fn from(value: Box<dyn std::error::Error>) -> Self {
         Error::String(value.to_string())
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(value: Error) -> Self {
+        match value {
+            Error::Io(io) => io,
+            _ => std::io::Error::new(std::io::ErrorKind::Other, value),
+        }
     }
 }
 
