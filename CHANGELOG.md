@@ -3,6 +3,14 @@
 This format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [0.3.2] - 2023-09-27
+
+## Added
+- `Adapter::get_mtu`: https://github.com/nulldotblack/wintun/pull/11
+
+### Changed
+- Improved formatting of errors: https://github.com/nulldotblack/wintun/pull/11
+
 ## [0.3.1] - 2023-09-16
 
 ## Added
