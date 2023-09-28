@@ -30,6 +30,32 @@ use windows::{
     },
 };
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Version {
+    pub major: u16,
+    pub minor: u16,
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+/// Returns the major and minor version of the wintun driver
+pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, crate::Error> {
+    let version = unsafe { wintun.WintunGetRunningDriverVersion() };
+    if version == 0 {
+        Err(crate::Error::from(util::get_last_error()))
+    } else {
+        let v = version.to_be_bytes();
+        Ok(Version {
+            major: u16::from_be_bytes([v[0], v[1]]),
+            minor: u16::from_be_bytes([v[2], v[3]]),
+        })
+    }
+}
+
 /// Wrapper around a <https://git.zx2c4.com/wintun/about/#wintun_adapter_handle>
 pub struct Adapter {
     adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
@@ -268,6 +294,12 @@ impl Adapter {
             .cloned();
         self.set_network_addresses_tuple((*address).into(), mask.into(), gateway)?;
         Ok(())
+    }
+
+    /// Sets the DNS servers for this adapter
+    pub fn set_dns_servers(&self, dns_servers: &[IpAddr]) -> Result<(), Error> {
+        let interface = GUID::from(self.get_guid());
+        Ok(util::set_interface_dns_settings(interface, dns_servers)?)
     }
 
     /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway

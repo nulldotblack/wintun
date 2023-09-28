@@ -94,12 +94,12 @@ mod util;
 mod wintun_raw;
 
 pub use crate::{
-    adapter::Adapter,
+    adapter::{get_running_driver_version, Adapter, Version},
     error::{Error, OutOfRangeData, Result},
     log::{default_logger, reset_logger, set_logger},
     packet::Packet,
     session::Session,
-    util::{format_message, get_running_driver_version, Version},
+    util::{format_message, get_active_network_interface_gateways},
 };
 pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 

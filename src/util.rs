@@ -1,6 +1,5 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-
 use crate::Error;
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use windows::{
     core::{GUID, PCWSTR, PWSTR},
     Win32::{
@@ -9,13 +8,14 @@ use windows::{
         },
         NetworkManagement::{
             IpHelper::{
-                FreeMibTable, GetAdaptersAddresses, GetIfTable2, GetInterfaceInfo, GAA_FLAG_INCLUDE_GATEWAYS,
-                GAA_FLAG_INCLUDE_PREFIX, IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2,
-                MIB_IF_TABLE2,
+                FreeMibTable, GetAdaptersAddresses, GetIfTable2, GetInterfaceInfo, SetInterfaceDnsSettings,
+                DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_NAMESERVER,
+                GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_INCLUDE_PREFIX, IF_TYPE_IEEE80211, IP_ADAPTER_ADDRESSES_LH,
+                IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2, MIB_IF_TABLE2,
             },
-            Ndis::NET_LUID_LH,
+            Ndis::{IfOperStatusUp, NET_LUID_LH},
         },
-        Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKET_ADDRESS},
+        Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR, SOCKADDR_IN, SOCKADDR_IN6, SOCKET_ADDRESS},
         System::{
             Com::StringFromGUID2,
             Diagnostics::Debug::{FormatMessageW, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM},
@@ -60,22 +60,77 @@ pub(crate) fn ipv6_netmask_for_prefix(prefix: u8) -> Result<Ipv6Addr, &'static s
     ))
 }
 
-pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> Result<IpAddr, Error> {
-    let sock_addr = address.lpSockaddr;
-    let len = address.iSockaddrLength as usize;
-    let ad = unsafe { std::slice::from_raw_parts(sock_addr as *const u8, len) };
-    let address = match unsafe { (*sock_addr).sa_family } {
-        AF_INET => Some(IpAddr::from(TryInto::<[u8; 4]>::try_into(
-            ad.get(4..4 + std::mem::size_of::<Ipv4Addr>())
-                .ok_or(Error::from("No IPv4 address found"))?,
-        )?)),
-        AF_INET6 => Some(IpAddr::from(TryInto::<[u8; 16]>::try_into(
-            ad.get(8..8 + std::mem::size_of::<Ipv6Addr>())
-                .ok_or(Error::from("No IPv6 address found"))?,
-        )?)),
-        _ => None,
+/// Returns the active network interface's gateway addresses,
+/// for convenience to user to configure routing table.
+pub fn get_active_network_interface_gateways() -> std::io::Result<Vec<IpAddr>> {
+    let mut addrs = vec![];
+    get_adapters_addresses(|adapter| {
+        if adapter.OperStatus == IfOperStatusUp && adapter.IfType == IF_TYPE_IEEE80211 {
+            let mut current_gateway = adapter.FirstGatewayAddress;
+            while !current_gateway.is_null() {
+                let gateway = unsafe { &*current_gateway };
+                {
+                    let sockaddr_ptr = gateway.Address.lpSockaddr;
+                    let sockaddr = unsafe { &*(sockaddr_ptr as *const SOCKADDR) };
+                    let a = unsafe { sockaddr_to_socket_addr(sockaddr) }?;
+                    addrs.push(a.ip());
+                }
+                current_gateway = gateway.Next;
+            }
+        }
+        Ok(())
+    })?;
+    Ok(addrs)
+}
+
+pub(crate) fn set_interface_dns_settings(interface: GUID, dns: &[IpAddr]) -> std::io::Result<()> {
+    // format L"1.1.1.1,8.8.8.8", or L"1.1.1.1 8.8.8.8".
+    let dns = dns.iter().map(|ip| ip.to_string()).collect::<Vec<_>>().join(",");
+    let dns = dns.encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
+
+    let settings = DNS_INTERFACE_SETTINGS {
+        Version: DNS_INTERFACE_SETTINGS_VERSION1,
+        Flags: DNS_SETTING_NAMESERVER as _,
+        NameServer: PWSTR(dns.as_ptr() as _),
+        ..DNS_INTERFACE_SETTINGS::default()
     };
-    address.ok_or(Error::from("Unsupported address type"))
+
+    unsafe { SetInterfaceDnsSettings(interface, &settings as *const _)? };
+    Ok(())
+}
+
+pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> Result<IpAddr, Error> {
+    unsafe { Ok(sockaddr_to_socket_addr(address.lpSockaddr)?.ip()) }
+}
+
+pub(crate) unsafe fn sockaddr_to_socket_addr(sock_addr: *const SOCKADDR) -> std::io::Result<SocketAddr> {
+    use std::io::{Error, ErrorKind};
+    let address = match (*sock_addr).sa_family {
+        AF_INET => sockaddr_in_to_socket_addr(&*(sock_addr as *const SOCKADDR_IN))?,
+        AF_INET6 => sockaddr_in6_to_socket_addr(&*(sock_addr as *const SOCKADDR_IN6))?,
+        _ => return Err(Error::new(ErrorKind::Other, "Unsupported address type")),
+    };
+    Ok(address)
+}
+
+pub(crate) unsafe fn sockaddr_in_to_socket_addr(sockaddr_in: &SOCKADDR_IN) -> std::io::Result<SocketAddr> {
+    let addr = &sockaddr_in.sin_addr.S_un.S_addr;
+    let v = std::slice::from_raw_parts(addr as *const _ as *const u8, std::mem::size_of::<u32>());
+    let ip = IpAddr::from(
+        TryInto::<[u8; std::mem::size_of::<u32>()]>::try_into(v)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+    );
+    let port = u16::from_be(sockaddr_in.sin_port);
+    Ok(SocketAddr::new(ip, port))
+}
+
+pub(crate) unsafe fn sockaddr_in6_to_socket_addr(sockaddr_in6: &SOCKADDR_IN6) -> std::io::Result<SocketAddr> {
+    let ip = IpAddr::from(
+        TryInto::<[u8; 16]>::try_into(sockaddr_in6.sin6_addr.u.Byte)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+    );
+    let port = u16::from_be(sockaddr_in6.sin6_port);
+    Ok(SocketAddr::new(ip, port))
 }
 
 pub(crate) fn get_adapters_addresses<F>(mut callback: F) -> Result<(), Error>
@@ -249,32 +304,6 @@ pub(crate) fn get_last_error() -> String {
     match err {
         Ok(_) => "No error".to_string(),
         Err(err) => err.to_string(),
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct Version {
-    pub major: u16,
-    pub minor: u16,
-}
-
-impl std::fmt::Display for Version {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}.{}", self.major, self.minor)
-    }
-}
-
-/// Returns the major and minor version of the wintun driver
-pub fn get_running_driver_version(wintun: &crate::Wintun) -> Result<Version, crate::Error> {
-    let version = unsafe { wintun.WintunGetRunningDriverVersion() };
-    if version == 0 {
-        Err(crate::Error::from(get_last_error()))
-    } else {
-        let v = version.to_be_bytes();
-        Ok(Version {
-            major: u16::from_be_bytes([v[0], v[1]]),
-            minor: u16::from_be_bytes([v[2], v[3]]),
-        })
     }
 }
 

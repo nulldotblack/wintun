@@ -91,6 +91,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", set_route);
     std::process::Command::new("cmd").arg("/C").arg(set_route).output()?;
 
+    let dns = "8.8.8.8".parse::<IpAddr>().unwrap();
+    let dns2 = "8.8.4.4".parse::<IpAddr>().unwrap();
+    adapter.set_dns_servers(&[dns, dns2])?;
+
     let v = adapter.get_addresses()?;
     for addr in &v {
         let mask = adapter.get_netmask_of_address(addr)?;
@@ -106,6 +110,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // adapter.set_address("10.28.13.2".parse()?)?;
 
     println!("adapter mtu: {}", adapter.get_mtu()?);
+
+    println!(
+        "active adapter gateways: {:?}",
+        wintun::get_active_network_interface_gateways()?
+    );
 
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
     let reader_session = session.clone();
