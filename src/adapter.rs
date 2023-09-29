@@ -92,17 +92,16 @@ impl Adapter {
     /// Note: This is different from `Adapter Name`, which is a GUID.
     pub fn set_name(&self, name: &str) -> Result<(), Error> {
         // use command `netsh interface set interface name="oldname" newname="mynewname"`
-        let old_name = self.get_name()?;
-        let out = Command::new("netsh")
-            .arg("interface")
-            .arg("set")
-            .arg("interface")
-            .arg(format!("name=\"{}\"", old_name).as_str())
-            .arg(format!("newname=\"{}\"", name).as_str())
-            .output()?;
-        if !out.status.success() {
-            return Err(format!("Failed to set name: {}", String::from_utf8_lossy(&out.stderr)).into());
-        }
+
+        let args = &[
+            "interface",
+            "set",
+            "interface",
+            &format!("name=\"{}\"", self.get_name()?),
+            &format!("newname=\"{}\"", name),
+        ];
+        util::run_command("netsh", args)?;
+
         Ok(())
     }
 

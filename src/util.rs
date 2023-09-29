@@ -10,8 +10,8 @@ use windows::{
             IpHelper::{
                 FreeMibTable, GetAdaptersAddresses, GetIfTable2, GetInterfaceInfo, SetInterfaceDnsSettings,
                 DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_NAMESERVER,
-                GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_INCLUDE_PREFIX, IF_TYPE_IEEE80211, IP_ADAPTER_ADDRESSES_LH,
-                IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2, MIB_IF_TABLE2,
+                GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_INCLUDE_PREFIX, IF_TYPE_ETHERNET_CSMACD, IF_TYPE_IEEE80211,
+                IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2, MIB_IF_TABLE2,
             },
             Ndis::{IfOperStatusUp, NET_LUID_LH},
         },
@@ -65,7 +65,9 @@ pub(crate) fn ipv6_netmask_for_prefix(prefix: u8) -> Result<Ipv6Addr, &'static s
 pub fn get_active_network_interface_gateways() -> std::io::Result<Vec<IpAddr>> {
     let mut addrs = vec![];
     get_adapters_addresses(|adapter| {
-        if adapter.OperStatus == IfOperStatusUp && adapter.IfType == IF_TYPE_IEEE80211 {
+        if adapter.OperStatus == IfOperStatusUp
+            && [IF_TYPE_IEEE80211, IF_TYPE_ETHERNET_CSMACD].contains(&adapter.IfType)
+        {
             let mut current_gateway = adapter.FirstGatewayAddress;
             while !current_gateway.is_null() {
                 let gateway = unsafe { &*current_gateway };
@@ -301,20 +303,33 @@ pub(crate) fn get_last_error() -> String {
 }
 
 pub(crate) fn set_adapter_mtu(name: &str, mtu: usize) -> std::io::Result<()> {
-    // command line: `netsh interface ipv4 set subinterface "MyAdapter" mtu=1500`
-    let mut cmd = std::process::Command::new("netsh");
-    cmd.arg("interface")
-        .arg("ipv4")
-        .arg("set")
-        .arg("subinterface")
-        .arg(format!("\"{}\"", name))
-        .arg(format!("mtu={}", mtu));
-    let output = cmd.output()?;
-    if !output.status.success() {
-        let err = format!("Failed to set mtu: {}", String::from_utf8_lossy(&output.stderr));
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, err));
-    }
+    // command line: `netsh interface ipv4 set subinterface "MyAdapter" mtu=1500 store=persistent`
+    let args = &[
+        "interface",
+        "ipv4",
+        "set",
+        "subinterface",
+        &format!("\"{}\"", name),
+        &format!("mtu={}", mtu),
+        "store=persistent",
+    ];
+    run_command("netsh", args)?;
     Ok(())
+}
+
+/// Runs a command and returns an error if the command fails, just convenience for users.
+pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Vec<u8>> {
+    let out = std::process::Command::new(command).args(args).output()?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(if out.stderr.is_empty() {
+            &out.stdout
+        } else {
+            &out.stderr
+        });
+        let info = format!("{} failed with: \"{}\"", command, err);
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, info));
+    }
+    Ok(out.stdout)
 }
 
 pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {

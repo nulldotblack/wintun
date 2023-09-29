@@ -99,7 +99,7 @@ pub use crate::{
     log::{default_logger, reset_logger, set_logger},
     packet::Packet,
     session::Session,
-    util::{format_message, get_active_network_interface_gateways},
+    util::{format_message, get_active_network_interface_gateways, run_command},
 };
 pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 
