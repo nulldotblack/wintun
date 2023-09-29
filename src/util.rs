@@ -83,7 +83,7 @@ pub fn get_active_network_interface_gateways() -> std::io::Result<Vec<IpAddr>> {
     Ok(addrs)
 }
 
-pub(crate) fn set_interface_dns_settings(interface: GUID, dns: &[IpAddr]) -> std::io::Result<()> {
+pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> std::io::Result<()> {
     // format L"1.1.1.1,8.8.8.8", or L"1.1.1.1 8.8.8.8".
     let dns = dns.iter().map(|ip| ip.to_string()).collect::<Vec<_>>().join(",");
     let dns = dns.encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
@@ -106,31 +106,24 @@ pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> R
 pub(crate) unsafe fn sockaddr_to_socket_addr(sock_addr: *const SOCKADDR) -> std::io::Result<SocketAddr> {
     use std::io::{Error, ErrorKind};
     let address = match (*sock_addr).sa_family {
-        AF_INET => sockaddr_in_to_socket_addr(&*(sock_addr as *const SOCKADDR_IN))?,
-        AF_INET6 => sockaddr_in6_to_socket_addr(&*(sock_addr as *const SOCKADDR_IN6))?,
+        AF_INET => sockaddr_in_to_socket_addr(&*(sock_addr as *const SOCKADDR_IN)),
+        AF_INET6 => sockaddr_in6_to_socket_addr(&*(sock_addr as *const SOCKADDR_IN6)),
         _ => return Err(Error::new(ErrorKind::Other, "Unsupported address type")),
     };
     Ok(address)
 }
 
-pub(crate) unsafe fn sockaddr_in_to_socket_addr(sockaddr_in: &SOCKADDR_IN) -> std::io::Result<SocketAddr> {
-    let addr = &sockaddr_in.sin_addr.S_un.S_addr;
-    let v = std::slice::from_raw_parts(addr as *const _ as *const u8, std::mem::size_of::<u32>());
-    let ip = IpAddr::from(
-        TryInto::<[u8; std::mem::size_of::<u32>()]>::try_into(v)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
-    );
+pub(crate) unsafe fn sockaddr_in_to_socket_addr(sockaddr_in: &SOCKADDR_IN) -> SocketAddr {
+    let ip_bytes = sockaddr_in.sin_addr.S_un.S_addr.to_ne_bytes();
+    let ip = std::net::IpAddr::from(ip_bytes);
     let port = u16::from_be(sockaddr_in.sin_port);
-    Ok(SocketAddr::new(ip, port))
+    SocketAddr::new(ip, port)
 }
 
-pub(crate) unsafe fn sockaddr_in6_to_socket_addr(sockaddr_in6: &SOCKADDR_IN6) -> std::io::Result<SocketAddr> {
-    let ip = IpAddr::from(
-        TryInto::<[u8; 16]>::try_into(sockaddr_in6.sin6_addr.u.Byte)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
-    );
+pub(crate) unsafe fn sockaddr_in6_to_socket_addr(sockaddr_in6: &SOCKADDR_IN6) -> SocketAddr {
+    let ip = std::net::IpAddr::from(sockaddr_in6.sin6_addr.u.Byte);
     let port = u16::from_be(sockaddr_in6.sin6_port);
-    Ok(SocketAddr::new(ip, port))
+    SocketAddr::new(ip, port)
 }
 
 pub(crate) fn get_adapters_addresses<F>(mut callback: F) -> Result<(), Error>
@@ -305,6 +298,23 @@ pub(crate) fn get_last_error() -> String {
         Ok(_) => "No error".to_string(),
         Err(err) => err.to_string(),
     }
+}
+
+pub(crate) fn set_adapter_mtu(name: &str, mtu: usize) -> std::io::Result<()> {
+    // command line: `netsh interface ipv4 set subinterface "MyAdapter" mtu=1500`
+    let mut cmd = std::process::Command::new("netsh");
+    cmd.arg("interface")
+        .arg("ipv4")
+        .arg("set")
+        .arg("subinterface")
+        .arg(format!("\"{}\"", name))
+        .arg(format!("mtu={}", mtu));
+    let output = cmd.output()?;
+    if !output.status.success() {
+        let err = format!("Failed to set mtu: {}", String::from_utf8_lossy(&output.stderr));
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, err));
+    }
+    Ok(())
 }
 
 pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {

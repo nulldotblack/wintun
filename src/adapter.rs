@@ -225,6 +225,12 @@ impl Adapter {
         get_adapter_luid(&self.wintun, self.adapter.0)
     }
 
+    /// Set `MTU` of this adapter
+    pub fn set_mtu(&self, mtu: usize) -> Result<(), Error> {
+        let name = self.get_name()?;
+        Ok(util::set_adapter_mtu(&name, mtu)?)
+    }
+
     /// Returns `MTU` of this adapter
     pub fn get_mtu(&self) -> Result<usize, Error> {
         let luid = self.get_luid();
@@ -299,7 +305,7 @@ impl Adapter {
     /// Sets the DNS servers for this adapter
     pub fn set_dns_servers(&self, dns_servers: &[IpAddr]) -> Result<(), Error> {
         let interface = GUID::from(self.get_guid());
-        Ok(util::set_interface_dns_settings(interface, dns_servers)?)
+        Ok(util::set_interface_dns_servers(interface, dns_servers)?)
     }
 
     /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
