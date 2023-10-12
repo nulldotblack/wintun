@@ -5,7 +5,9 @@ use crate::{
 };
 use std::{ptr, slice, sync::Arc, sync::OnceLock};
 use windows::Win32::{
-    Foundation::{CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_FAILED, WAIT_OBJECT_0},
+    Foundation::{
+        CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0,
+    },
     System::Threading::{SetEvent, WaitForMultipleObjects, INFINITE},
 };
 
@@ -128,17 +130,21 @@ impl Session {
                 //pointer to valid, aligned, stack memory
                 WaitForMultipleObjects(&handles, FALSE, INFINITE)
             };
+            const WAIT_OBJECT_1: WAIT_EVENT = WAIT_EVENT(WAIT_OBJECT_0.0 + 1);
             match result {
                 WAIT_FAILED => return Err(Error::from(util::get_last_error())),
+                WAIT_OBJECT_0 => {
+                    //We have data!
+                    continue;
+                }
+                WAIT_OBJECT_1 => {
+                    //Shutdown event triggered
+                    let err = format!("Session {:?} shuting down", self.session);
+                    return Err(Error::from(err));
+                }
                 _ => {
-                    if result == WAIT_OBJECT_0 {
-                        //We have data!
-                        continue;
-                    } else if result.0 == WAIT_OBJECT_0.0 + 1 {
-                        //Shutdown event triggered
-                        let err = format!("Session {:?} shuting down", self.session);
-                        return Err(Error::from(err));
-                    }
+                    //This should never happen
+                    ::log::error!("WaitForMultipleObjects returned unexpected value {:?}", result);
                 }
             }
         }
