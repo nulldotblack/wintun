@@ -152,7 +152,13 @@ pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    unsafe { Ok(Arc::new(wintun_raw::wintun::new(path)?)) }
+    let dll_path = path.as_ref().to_string_lossy().to_string();
+    let lib = wintun_raw::wintun::new(path);
+    if let Err(err) = lib {
+        ::log::error!("Failed to load \"wintun.dll\" from path: \"{}\"", dll_path);
+        return Err(err.into());
+    }
+    Ok(Arc::new(lib?))
 }
 
 /// Attempts to load the Wintun library from an existing [`libloading::Library`].
