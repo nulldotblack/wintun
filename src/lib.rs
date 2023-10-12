@@ -94,7 +94,7 @@ mod util;
 mod wintun_raw;
 
 pub use crate::{
-    adapter::{get_running_driver_version, Adapter, Version},
+    adapter::Adapter,
     error::{Error, OutOfRangeData, Result},
     log::{default_logger, reset_logger, set_logger},
     packet::Packet,
@@ -176,4 +176,30 @@ where
     L: Into<libloading::Library>,
 {
     unsafe { Ok(Arc::new(wintun_raw::wintun::from_library(library)?)) }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Version {
+    pub major: u16,
+    pub minor: u16,
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+/// Returns the major and minor version of the wintun driver
+pub fn get_running_driver_version(wintun: &Wintun) -> Result<Version> {
+    let version = unsafe { wintun.WintunGetRunningDriverVersion() };
+    if version == 0 {
+        Err(Error::from(util::get_last_error()))
+    } else {
+        let v = version.to_be_bytes();
+        Ok(Version {
+            major: u16::from_be_bytes([v[0], v[1]]),
+            minor: u16::from_be_bytes([v[2], v[3]]),
+        })
+    }
 }
