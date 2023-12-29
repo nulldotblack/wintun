@@ -136,8 +136,8 @@ impl Session {
                         continue;
                     } else if result.0 == WAIT_OBJECT_0.0 + 1 {
                         //Shutdown event triggered
-                        let err = format!("Session {:?} shuting down", self.session);
-                        return Err(Error::from(err));
+                        let session_id = format!("{:?}", self.session);
+                        return Err(Error::ShuttingDown(session_id));
                     }
                 }
             }

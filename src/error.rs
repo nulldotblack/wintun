@@ -46,6 +46,9 @@ pub enum Error {
 
     #[error(transparent)]
     Infallible(#[from] std::convert::Infallible),
+
+    #[error("Session {0:?} shutting down")]
+    ShuttingDown(String),
 }
 
 impl From<String> for Error {
