@@ -139,8 +139,8 @@ impl Session {
                 }
                 WAIT_OBJECT_1 => {
                     //Shutdown event triggered
-                    let err = format!("Session {:?} shuting down", self.session);
-                    return Err(Error::from(err));
+                    let session_id = format!("{:?}", self.session);
+                    return Err(Error::ShuttingDown(session_id));
                 }
                 _ => {
                     //This should never happen
