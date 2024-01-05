@@ -318,6 +318,7 @@ pub(crate) fn set_adapter_mtu(name: &str, mtu: usize) -> std::io::Result<()> {
 }
 
 /// Runs a command and returns an error if the command fails, just convenience for users.
+#[doc(hidden)]
 pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Vec<u8>> {
     let out = std::process::Command::new(command).args(args).output()?;
     if !out.status.success() {

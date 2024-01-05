@@ -144,7 +144,7 @@ impl Session {
                 }
                 _ => {
                     //This should never happen
-                    ::log::error!("WaitForMultipleObjects returned unexpected value {:?}", result);
+                    panic!("WaitForMultipleObjects returned unexpected value {:?}", result);
                 }
             }
         }
