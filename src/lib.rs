@@ -99,7 +99,7 @@ pub use crate::{
     log::{default_logger, reset_logger, set_logger},
     packet::Packet,
     session::Session,
-    util::{format_message, get_running_driver_version, Version},
+    util::{format_message, get_active_network_interface_gateways, run_command},
 };
 pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 
@@ -152,7 +152,13 @@ pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    unsafe { Ok(Arc::new(wintun_raw::wintun::new(path)?)) }
+    let path = path.as_ref();
+    let lib = wintun_raw::wintun::new(path);
+    if let Err(err) = lib {
+        ::log::error!("Failed to load \"wintun.dll\" from path: \"{:?}\"", path);
+        return Err(err.into());
+    }
+    Ok(Arc::new(lib?))
 }
 
 /// Attempts to load the Wintun library from an existing [`libloading::Library`].
@@ -170,4 +176,30 @@ where
     L: Into<libloading::Library>,
 {
     unsafe { Ok(Arc::new(wintun_raw::wintun::from_library(library)?)) }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct Version {
+    pub major: u16,
+    pub minor: u16,
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+/// Returns the major and minor version of the wintun driver
+pub fn get_running_driver_version(wintun: &Wintun) -> Result<Version> {
+    let version = unsafe { wintun.WintunGetRunningDriverVersion() };
+    if version == 0 {
+        Err(Error::from(util::get_last_error()))
+    } else {
+        let v = version.to_be_bytes();
+        Ok(Version {
+            major: u16::from_be_bytes([v[0], v[1]]),
+            minor: u16::from_be_bytes([v[2], v[3]]),
+        })
+    }
 }

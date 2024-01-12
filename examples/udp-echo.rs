@@ -56,40 +56,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Wintun version: {:?}", version);
 
     let adapter_name = "Demo";
+    let guid = 2131231231231231231_u128;
 
     // Open or create a new adapter
     let adapter = match wintun::Adapter::open(&wintun, adapter_name) {
         Ok(a) => a,
-        Err(_) => wintun::Adapter::create(&wintun, adapter_name, "MyTunnelType", None)?,
+        Err(_) => wintun::Adapter::create(&wintun, adapter_name, "MyTunnelType", Some(guid))?,
     };
 
     let version = wintun::get_running_driver_version(&wintun)?;
     println!("Wintun version: {}", version);
 
-    // Setting virtual network card information
+    // set metric command: `netsh interface ipv4 set interface adapter_name metric=255`
+    let args = &["interface", "ipv4", "set", "interface", adapter_name, "metric=255"];
+    wintun::run_command("netsh", args)?;
+    println!("netsh {}", args.join(" "));
+
+    // Execute the network card initialization command, setting virtual network card information
     // ip = 10.28.13.2 mask = 255.255.255.0 gateway = 10.28.13.1
-    // let index = adapter.get_adapter_index()?;
-    let set_metric = format!("netsh interface ipv4 set interface {} metric=255", adapter_name);
-    let set_gateway = format!(
-        "netsh interface ipv4 set address {} static 10.28.13.2/24 gateway=10.28.13.1",
-        adapter_name
-    );
+    // command: `netsh interface ipv4 set address adapter_name static 10.28.13.2/24 gateway=10.28.13.1`
+    let args = &[
+        "interface",
+        "ipv4",
+        "set",
+        "address",
+        adapter_name,
+        "static",
+        "10.28.13.2/24",
+        "gateway=10.28.13.1",
+    ];
+    wintun::run_command("netsh", args)?;
+    println!("netsh {}", args.join(" "));
 
-    println!("{}", set_metric);
-    println!("{}", set_gateway);
-
-    // Execute the network card initialization command
-    std::process::Command::new("cmd").arg("/C").arg(set_metric).output()?;
-    std::process::Command::new("cmd").arg("/C").arg(set_gateway).output()?;
-
-    // Add a test route setting, all traffic under the 10.28.13.2/24 subnet goes through the
-    // 10.28.13.1 gateway (which is the virtual network card we created above)
-    let set_route = format!(
-        "netsh interface ipv4 add route 10.28.13.2/24 {} 10.28.13.1",
-        adapter_name
-    );
-    println!("{}", set_route);
-    std::process::Command::new("cmd").arg("/C").arg(set_route).output()?;
+    let dns = "8.8.8.8".parse::<IpAddr>().unwrap();
+    let dns2 = "8.8.4.4".parse::<IpAddr>().unwrap();
+    adapter.set_dns_servers(&[dns, dns2])?;
 
     let v = adapter.get_addresses()?;
     for addr in &v {
@@ -106,6 +107,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // adapter.set_address("10.28.13.2".parse()?)?;
 
     println!("adapter mtu: {}", adapter.get_mtu()?);
+
+    println!(
+        "active adapter gateways: {:?}",
+        wintun::get_active_network_interface_gateways()?
+    );
 
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
     let reader_session = session.clone();

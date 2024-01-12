@@ -66,17 +66,16 @@ impl Adapter {
     /// Note: This is different from `Adapter Name`, which is a GUID.
     pub fn set_name(&self, name: &str) -> Result<(), Error> {
         // use command `netsh interface set interface name="oldname" newname="mynewname"`
-        let old_name = self.get_name()?;
-        let out = Command::new("netsh")
-            .arg("interface")
-            .arg("set")
-            .arg("interface")
-            .arg(format!("name=\"{}\"", old_name).as_str())
-            .arg(format!("newname=\"{}\"", name).as_str())
-            .output()?;
-        if !out.status.success() {
-            return Err(format!("Failed to set name: {}", String::from_utf8_lossy(&out.stderr)).into());
-        }
+
+        let args = &[
+            "interface",
+            "set",
+            "interface",
+            &format!("name=\"{}\"", self.get_name()?),
+            &format!("newname=\"{}\"", name),
+        ];
+        util::run_command("netsh", args)?;
+
         Ok(())
     }
 
@@ -199,6 +198,12 @@ impl Adapter {
         get_adapter_luid(&self.wintun, self.adapter.0)
     }
 
+    /// Set `MTU` of this adapter
+    pub fn set_mtu(&self, mtu: usize) -> Result<(), Error> {
+        let name = self.get_name()?;
+        Ok(util::set_adapter_mtu(&name, mtu)?)
+    }
+
     /// Returns `MTU` of this adapter
     pub fn get_mtu(&self) -> Result<usize, Error> {
         let luid = self.get_luid();
@@ -268,6 +273,12 @@ impl Adapter {
             .cloned();
         self.set_network_addresses_tuple((*address).into(), mask.into(), gateway)?;
         Ok(())
+    }
+
+    /// Sets the DNS servers for this adapter
+    pub fn set_dns_servers(&self, dns_servers: &[IpAddr]) -> Result<(), Error> {
+        let interface = GUID::from(self.get_guid());
+        Ok(util::set_interface_dns_servers(interface, dns_servers)?)
     }
 
     /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
