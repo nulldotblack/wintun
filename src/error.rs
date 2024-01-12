@@ -7,6 +7,7 @@ pub struct OutOfRangeData<T> {
 
 /// Error type returned when preconditions of this API are broken
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
