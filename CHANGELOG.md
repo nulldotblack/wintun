@@ -3,6 +3,15 @@
 This format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [0.4.0] - 2024-01-12
+
+## Added
+- `Adapter::get_mtu`, `set_dns_servers`, and `Adapter::get_active_network_interface_gateways`: https://github.com/nulldotblack/wintun/pull/13
+- `Error::ShuttingDown`: https://github.com/nulldotblack/wintun/pull/14
+
+### Breaking Changes
+- Adding the `ShuttingDown` variant to `wintun::Error` breaks exhastive matches on previous versions. `wintun::Error` is now marked `#[non_exhaustive]` to make future additions backwards compatable
+
 ## [0.3.2] - 2023-09-27
 
 ## Added
