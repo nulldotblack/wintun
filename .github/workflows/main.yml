@@ -45,3 +45,7 @@ jobs:
         with:
           command: build
           args: --examples --all-features
+
+  semver:
+    name: Check semver
+    uses: obi1kenobi/cargo-semver-checks-action@v2
