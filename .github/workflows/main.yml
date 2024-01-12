@@ -48,7 +48,7 @@ jobs:
 
   semver:
     name: Check semver
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
