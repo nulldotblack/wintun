@@ -45,3 +45,15 @@ jobs:
         with:
           command: build
           args: --examples --all-features
+
+  semver:
+    name: Check semver
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: obi1kenobi/cargo-semver-checks-action@v2

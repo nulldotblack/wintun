@@ -139,8 +139,7 @@ impl Session {
                 }
                 WAIT_OBJECT_1 => {
                     //Shutdown event triggered
-                    let session_id = format!("{:?}", self.session);
-                    return Err(Error::ShuttingDown(session_id));
+                    return Err(Error::ShuttingDown);
                 }
                 _ => {
                     //This should never happen
