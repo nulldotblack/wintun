@@ -188,7 +188,7 @@ impl std::fmt::Display for Version {
 pub fn get_running_driver_version(wintun: &Wintun) -> Result<Version> {
     let version = unsafe { wintun.WintunGetRunningDriverVersion() };
     if version == 0 {
-        Err(Error::from(util::get_last_error()))
+        Err(util::get_last_error()?.into())
     } else {
         let v = version.to_be_bytes();
         Ok(Version {

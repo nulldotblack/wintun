@@ -46,7 +46,7 @@ impl Session {
     pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, Error> {
         let ptr = unsafe { self.wintun.WintunAllocateSendPacket(self.session.0, size as u32) };
         if ptr.is_null() {
-            Err(Error::from(util::get_last_error()))
+            Err(util::get_last_error()?.into())
         } else {
             Ok(packet::Packet {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -78,14 +78,9 @@ impl Session {
         debug_assert!(size <= u16::MAX as u32);
         if ptr.is_null() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
-            if let Err(last_error) = unsafe { GetLastError() } {
-                if last_error.code() == ERROR_NO_MORE_ITEMS.to_hresult() {
-                    Ok(None)
-                } else {
-                    Err(last_error.into())
-                }
-            } else {
-                Err("Unknow error".into())
+            match unsafe { GetLastError() } {
+                ERROR_NO_MORE_ITEMS => Ok(None),
+                e => Err(std::io::Error::from_raw_os_error(e.0 as i32).into()),
             }
         } else {
             Ok(Some(packet::Packet {
@@ -132,7 +127,7 @@ impl Session {
             };
             const WAIT_OBJECT_1: WAIT_EVENT = WAIT_EVENT(WAIT_OBJECT_0.0 + 1);
             match result {
-                WAIT_FAILED => return Err(Error::from(util::get_last_error())),
+                WAIT_FAILED => return Err(util::get_last_error()?.into()),
                 WAIT_OBJECT_0 => {
                     //We have data!
                     continue;

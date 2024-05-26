@@ -387,7 +387,10 @@ impl Adapter {
                         match address {
                             IpAddr::V4(_) => {
                                 let mut mask = 0_u32;
-                                unsafe { ConvertLengthToIpv4Mask(masklength as u32, &mut mask as *mut u32)? };
+                                match unsafe { ConvertLengthToIpv4Mask(masklength as u32, &mut mask as *mut u32).0 } {
+                                    0 => {}
+                                    err => return Err(std::io::Error::from_raw_os_error(err as i32).into()),
+                                }
                                 subnet_mask = Some(IpAddr::V4(Ipv4Addr::from(mask.to_le_bytes())));
                             }
                             IpAddr::V6(_) => {

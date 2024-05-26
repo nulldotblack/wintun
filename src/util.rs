@@ -97,8 +97,10 @@ pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> std:
         ..DNS_INTERFACE_SETTINGS::default()
     };
 
-    unsafe { SetInterfaceDnsSettings(interface, &settings as *const _)? };
-    Ok(())
+    match unsafe { SetInterfaceDnsSettings(interface, &settings as *const _).0 } {
+        0 => Ok(()),
+        e => Err(std::io::Error::from_raw_os_error(e as i32)),
+    }
 }
 
 pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> Result<IpAddr, Error> {
@@ -284,21 +286,20 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
         )
     };
     if chars_written == 0 {
-        return Err(get_last_error().into());
+        return Ok(get_last_error()?);
     }
     let result = unsafe { buf.to_string()? };
-    if let Err(v) = unsafe { LocalFree(HLOCAL(buf.as_ptr() as *mut _)) } {
-        log::trace!("LocalFree \"{}\"", v);
+    if unsafe { !LocalFree(HLOCAL(buf.as_ptr() as *mut _)).is_invalid() } {
+        log::trace!("LocalFree failed: {:?}", get_last_error());
     }
 
     Ok(result)
 }
 
-pub(crate) fn get_last_error() -> String {
-    let err = unsafe { GetLastError() };
-    match err {
-        Ok(_) => "No error".to_string(),
-        Err(err) => err.to_string(),
+pub(crate) fn get_last_error() -> std::io::Result<String> {
+    match unsafe { GetLastError().0 } {
+        0 => Ok("No error".to_string()),
+        e => Err(std::io::Error::from_raw_os_error(e as i32)),
     }
 }
 
@@ -336,7 +337,10 @@ pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Vec<u8>> {
 pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
     unsafe {
         let mut if_table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
-        GetIfTable2(&mut if_table as *mut *mut _)?;
+        match GetIfTable2(&mut if_table as *mut *mut _).0 {
+            0 => (),
+            e => return Err(std::io::Error::from_raw_os_error(e as i32)),
+        }
 
         let num_entries = (*if_table).NumEntries as usize;
         let mut mtu = None;
@@ -355,9 +359,7 @@ pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
             }
         }
 
-        if let Err(e) = FreeMibTable(if_table as *mut _) {
-            log::trace!("Failed to free MIB table: {}", e);
-        }
+        FreeMibTable(if_table as *mut _);
         mtu.ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Adapter not found"))
     }
 }

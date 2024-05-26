@@ -29,8 +29,8 @@ panic_on_unsent_packets = []
 c2rust-bitfields = "0.18"
 libloading = "0.8"
 log = "0.4"
-thiserror = "1.0"
-windows = { version = "0.52", features = [
+thiserror = "1"
+windows = { version = "0.56", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
     "Win32_Security_Cryptography",
@@ -46,7 +46,7 @@ windows = { version = "0.52", features = [
 ] }
 
 [dev-dependencies]
-env_logger = "0.10"
+env_logger = "0.11"
 packet = "0.1"
-pcap-file = "2.0"
+pcap-file = "2"
 subprocess = "0.2"
