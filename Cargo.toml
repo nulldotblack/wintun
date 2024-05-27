@@ -27,12 +27,15 @@ panic_on_unsent_packets = []
 
 [dependencies]
 c2rust-bitfields = "0.18"
+hex = "0.4"
 libloading = "0.8"
 log = "0.4"
+sha2 = "0.10"
 thiserror = "1"
 windows = { version = "0.56", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
+    "Win32_System_LibraryLoader",
     "Win32_Security_Cryptography",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",

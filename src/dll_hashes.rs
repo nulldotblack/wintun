@@ -1,0 +1,22 @@
+pub fn wintun_dll_hash_sha256() -> std::collections::HashMap<&'static str, &'static str> {
+    [
+        (
+            "wintun/bin/amd64/wintun.dll",
+            "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+        ),
+        (
+            "wintun/bin/arm/wintun.dll",
+            "daad267411ecdc70a0535e274d2c3e9da3d0084bdac7662cb8424dd4a031b4d9",
+        ),
+        (
+            "wintun/bin/arm64/wintun.dll",
+            "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+        ),
+        (
+            "wintun/bin/x86/wintun.dll",
+            "d694fa46ab4cfebcb2632d094c7aa97278eef2f8052438621766d863ae98a931",
+        ),
+    ]
+    .into_iter()
+    .collect()
+}
