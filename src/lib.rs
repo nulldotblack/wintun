@@ -76,7 +76,6 @@
 //!
 
 mod adapter;
-mod dll_hashes;
 mod error;
 mod log;
 mod packet;
@@ -153,7 +152,6 @@ pub unsafe fn load_from_path<P>(path: P) -> Result<Wintun, Error>
 where
     P: AsRef<::std::ffi::OsStr>,
 {
-    verify_wintun_bin(&path)?;
     unsafe { Ok(Arc::new(wintun_raw::wintun::new(path)?)) }
 }
 
@@ -198,81 +196,4 @@ pub fn get_running_driver_version(wintun: &Wintun) -> Result<Version> {
             minor: u16::from_be_bytes([v[2], v[3]]),
         })
     }
-}
-
-#[doc(hidden)]
-pub fn get_wintun_bin_pattern_path() -> std::io::Result<&'static str> {
-    let dll_path = if cfg!(target_arch = "x86") {
-        "wintun/bin/x86/wintun.dll"
-    } else if cfg!(target_arch = "x86_64") {
-        "wintun/bin/amd64/wintun.dll"
-    } else if cfg!(target_arch = "arm") {
-        "wintun/bin/arm/wintun.dll"
-    } else if cfg!(target_arch = "aarch64") {
-        "wintun/bin/arm64/wintun.dll"
-    } else {
-        use std::io::{Error, ErrorKind};
-        return Err(Error::new(ErrorKind::Other, "Unsupported architecture"));
-    };
-    Ok(dll_path)
-}
-
-fn verify_wintun_bin<P>(path: P) -> Result<()>
-where
-    P: AsRef<::std::ffi::OsStr>,
-{
-    let path = path.as_ref();
-    let pattern_path = get_wintun_bin_pattern_path()?;
-    let dll_hashes = crate::dll_hashes::wintun_dll_hash_sha256();
-    let err = Error::from("Failed to find hash for the wintun.dll file. Please update the wintun crate");
-    let correct_hash = dll_hashes.get(pattern_path).ok_or(err)?;
-
-    let path2 = unsafe { get_dll_absolute_path(path)? };
-
-    use sha2::{Digest, Sha256};
-    use std::io::Read;
-
-    // Read the file
-    let mut file = std::fs::File::open(path2)?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-
-    // Compute the SHA256 hash of the file
-    let mut hasher = Sha256::new();
-    hasher.update(&buffer);
-    let computed_hash = hasher.finalize();
-
-    // Compare the computed hash with the correct hash
-    if hex::encode(computed_hash.as_slice()) != *correct_hash {
-        return Err(Error::from("The file has been tampered with"));
-    }
-    Ok(())
-}
-
-unsafe fn get_dll_absolute_path<P>(path: P) -> std::io::Result<std::path::PathBuf>
-where
-    P: AsRef<::std::ffi::OsStr>,
-{
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::*;
-    use windows::Win32::Foundation::FreeLibrary;
-    use windows::Win32::System::LibraryLoader::{GetModuleFileNameW, LoadLibraryW};
-
-    let path = path.as_ref();
-    let wide_filename: Vec<u16> = path.encode_wide().chain(Some(0)).collect();
-    // FIXME: `LoadLibraryW` calling will execute the DLL's DllMain function,
-    //        which is not desirable, but we haven't a better way to avoid it yet.
-    let lib = unsafe { LoadLibraryW(PCWSTR(wide_filename.as_ptr()))? };
-    let mut buf = [0u16; 1024];
-    let len = GetModuleFileNameW(lib, &mut buf) as usize;
-    FreeLibrary(lib)?;
-    if len == 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    use std::os::windows::ffi::OsStringExt;
-    let path2 = std::ffi::OsString::from_wide(&buf[..len])
-        .into_string()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string_lossy()))?;
-
-    Ok(std::path::PathBuf::from(path2))
 }

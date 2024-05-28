@@ -10,13 +10,6 @@ usage feel ergonomic.
 [![Download](https://img.shields.io/crates/d/wintun.svg)](https://crates.io/crates/wintun)
 [![License](https://img.shields.io/crates/l/wintun.svg?style=flat)](https://github.com/nulldotblack/wintun/blob/main/LICENSE)
 
-## Refreshing wrapper code
-The wrapper code is generated using bindgen. To regenerate the code once `wintun.dll` is updated,
-run the following command:
-```sh
-bash bindgen.sh
-```
-
 ## Usage
 
 Inside your code load the wintun.dll signed driver file, downloaded from <https://wintun.net>,
