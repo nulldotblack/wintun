@@ -374,3 +374,31 @@ struct _NET_LUID_LH_INFO {
     #[bitfield(name = "IfType", ty = "u64", bits = "48..=63")]
     _Value: [u8; 8],
 }
+
+pub(crate) unsafe fn get_dll_absolute_path<P>(path: P) -> std::io::Result<std::path::PathBuf>
+where
+    P: AsRef<::std::ffi::OsStr>,
+{
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::*;
+    use windows::Win32::Foundation::FreeLibrary;
+    use windows::Win32::System::LibraryLoader::{GetModuleFileNameW, LoadLibraryW};
+
+    let path = path.as_ref();
+    let wide_filename: Vec<u16> = path.encode_wide().chain(Some(0)).collect();
+    // FIXME: `LoadLibraryW` calling will execute the DLL's DllMain function,
+    //        which is not desirable, but we haven't a better way to avoid it yet.
+    let lib = unsafe { LoadLibraryW(PCWSTR(wide_filename.as_ptr()))? };
+    let mut buf = [0u16; 1024];
+    let len = GetModuleFileNameW(lib, &mut buf) as usize;
+    FreeLibrary(lib)?;
+    if len == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    use std::os::windows::ffi::OsStringExt;
+    let path2 = std::ffi::OsString::from_wide(&buf[..len])
+        .into_string()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string_lossy()))?;
+
+    Ok(std::path::PathBuf::from(path2))
+}
