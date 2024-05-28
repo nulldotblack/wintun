@@ -33,7 +33,6 @@ thiserror = "1"
 windows = { version = "0.56", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
-    "Win32_System_LibraryLoader",
     "Win32_Security_Cryptography",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
@@ -45,17 +44,6 @@ windows = { version = "0.56", features = [
     "Win32_System_Ioctl",
     "Win32_System_IO",
 ] }
-
-[dependencies.windows-sys]
-version = "0.52"
-features = [
-    "Win32_Foundation",
-    "Win32_Security",
-    "Win32_Security_WinTrust",
-    "Win32_Security_Cryptography",
-    "Win32_System_Threading",
-    "Win32_UI_WindowsAndMessaging",
-]
 
 [dev-dependencies]
 env_logger = "0.11"

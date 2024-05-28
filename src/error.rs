@@ -18,9 +18,6 @@ pub enum Error {
     #[error("CapacityOutOfRange {0:?}")]
     CapacityOutOfRange(OutOfRangeData<u32>),
 
-    #[error("InvalidSigner {0}")]
-    InvalidSigner(String),
-
     #[error("{0}")]
     String(String),
 

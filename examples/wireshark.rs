@@ -19,6 +19,7 @@ use windows::Win32::{
     Networking::WinSock::{AF_INET, AF_INET6, SOCKADDR_INET},
 };
 use wintun::{format_message, Error};
+mod misc;
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
@@ -68,7 +69,7 @@ impl RouteCmd {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
-    let dll_path = wintun::get_wintun_bin_pattern_path()?;
+    let dll_path = misc::get_wintun_bin_relative_path()?;
     let wintun = unsafe { wintun::load_from_path(dll_path)? };
 
     let adapter = match wintun::Adapter::open(&wintun, "Demo") {
