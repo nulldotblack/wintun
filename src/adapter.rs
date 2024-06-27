@@ -167,7 +167,7 @@ impl Adapter {
     /// Initiates a new wintun session on the given adapter.
     ///
     /// Capacity is the size in bytes of the ring buffer used internally by the driver. Must be
-    /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MIN_RING_CAPACITY`].
+    /// a power of two between [`crate::MIN_RING_CAPACITY`] and [`crate::MAX_RING_CAPACITY`] inclusive.
     pub fn start_session(self: &Arc<Self>, capacity: u32) -> Result<session::Session, Error> {
         let range = crate::MIN_RING_CAPACITY..=crate::MAX_RING_CAPACITY;
         if !range.contains(&capacity) {
