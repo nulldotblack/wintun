@@ -360,9 +360,7 @@ pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
             }
         }
 
-        if let Err(e) = FreeMibTable(if_table as *mut _) {
-            log::trace!("Failed to free MIB table: {}", e);
-        }
+        FreeMibTable(if_table as *mut _);
         mtu.ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Adapter not found"))
     }
 }
