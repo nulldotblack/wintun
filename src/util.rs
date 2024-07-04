@@ -290,6 +290,7 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
     }
     let result = unsafe { buf.to_string()? };
     if unsafe { !LocalFree(HLOCAL(buf.as_ptr() as *mut _)).is_invalid() } {
+        // Win32 returns the same handle if `LocalFree` fails
         log::trace!("LocalFree failed: {:?}", get_last_error());
     }
 
@@ -359,7 +360,9 @@ pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
             }
         }
 
-        FreeMibTable(if_table as *mut _);
+        if let Err(e) = FreeMibTable(if_table as *mut _) {
+            log::trace!("Failed to free MIB table: {}", e);
+        }
         mtu.ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Adapter not found"))
     }
 }
