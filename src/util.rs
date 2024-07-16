@@ -5,13 +5,14 @@ use windows_sys::{
     Win32::{
         Foundation::{
             GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, NO_ERROR,
+            WIN32_ERROR,
         },
         NetworkManagement::{
             IpHelper::{
-                FreeMibTable, GetAdaptersAddresses, GetIfTable2, GetInterfaceInfo, SetInterfaceDnsSettings,
-                DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_NAMESERVER,
-                GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_INCLUDE_PREFIX, IF_TYPE_ETHERNET_CSMACD, IF_TYPE_IEEE80211,
-                IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2, MIB_IF_TABLE2,
+                FreeMibTable, GetAdaptersAddresses, GetIfTable2, GetInterfaceInfo, DNS_INTERFACE_SETTINGS,
+                DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_NAMESERVER, GAA_FLAG_INCLUDE_GATEWAYS,
+                GAA_FLAG_INCLUDE_PREFIX, IF_TYPE_ETHERNET_CSMACD, IF_TYPE_IEEE80211, IP_ADAPTER_ADDRESSES_LH,
+                IP_ADAPTER_INDEX_MAP, IP_INTERFACE_INFO, MIB_IF_ROW2, MIB_IF_TABLE2,
             },
             Ndis::{IfOperStatusUp, NET_LUID_LH},
         },
@@ -120,7 +121,7 @@ pub fn get_active_network_interface_gateways() -> std::io::Result<Vec<IpAddr>> {
     Ok(addrs)
 }
 
-pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> std::io::Result<()> {
+pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> crate::Result<()> {
     // format L"1.1.1.1,8.8.8.8", or L"1.1.1.1 8.8.8.8".
     let dns = dns.iter().map(|ip| ip.to_string()).collect::<Vec<_>>().join(",");
     let dns = dns.encode_utf16().chain(std::iter::once(0)).collect::<Vec<_>>();
@@ -138,10 +139,39 @@ pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> std:
         ProfileNameServer: std::ptr::null_mut(),
     };
 
-    match unsafe { SetInterfaceDnsSettings(interface, &settings as *const _) } {
+    // unsafe { SetInterfaceDnsSettings(interface, &settings as *const _) }
+
+    type TheFn = unsafe extern "system" fn(interface: GUID, settings: *const DNS_INTERFACE_SETTINGS) -> WIN32_ERROR;
+    let library = unsafe { ::libloading::Library::new("iphlpapi.dll")? };
+    let func: TheFn = unsafe { library.get(b"SetInterfaceDnsSettings\0").map(|sym| *sym)? };
+    match unsafe { func(interface, &settings as *const _) } {
         0 => Ok(()),
-        e => Err(std::io::Error::from_raw_os_error(e as i32)),
+        e => Err(std::io::Error::from_raw_os_error(e as i32).into()),
     }
+}
+
+pub(crate) fn set_adapter_dns_servers(adapter: &str, dns: &[IpAddr]) -> crate::Result<()> {
+    if dns.is_empty() {
+        return Ok(());
+    }
+    let ip_str = if dns[0].is_ipv4() { "ipv4" } else { "ipv6" };
+
+    // netsh interface ipv4 set dns name="MyAdapter" source="static" address="8.8.8.8"
+    // netsh interface ipv4 add dns name="MyAdapter" index=2 address="8.8.4.4"
+    let name = format!("name=\"{}\"", adapter);
+    let addr = format!("address=\"{}\"", dns[0]);
+    let args = vec!["interface", ip_str, "set", "dns", &name, "source=\"static\"", &addr];
+    run_command("netsh", &args)?;
+    let mut index = 2;
+    for dns in dns.iter().skip(1) {
+        let addr = format!("address=\"{}\"", dns);
+        let idx = format!("index={}", index);
+        let args = vec!["interface", ip_str, "add", "dns", &name, &idx, &addr];
+        run_command("netsh", &args)?;
+        index += 1;
+    }
+
+    Ok(())
 }
 
 pub(crate) fn retrieve_ipaddr_from_socket_address(address: &SOCKET_ADDRESS) -> Result<IpAddr, Error> {

@@ -282,7 +282,11 @@ impl Adapter {
     /// Sets the DNS servers for this adapter
     pub fn set_dns_servers(&self, dns_servers: &[IpAddr]) -> Result<(), Error> {
         let interface = GUID::from_u128(self.get_guid());
-        Ok(util::set_interface_dns_servers(interface, dns_servers)?)
+        if let Err(err) = util::set_interface_dns_servers(interface, dns_servers) {
+            log::error!("Failed to set DNS servers in first attempt: {}", err);
+            util::set_adapter_dns_servers(&self.get_name()?, dns_servers)?;
+        }
+        Ok(())
     }
 
     /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
