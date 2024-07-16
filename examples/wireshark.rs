@@ -67,6 +67,7 @@ impl RouteCmd {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     env_logger::init();
 
     let dll_path = misc::get_wintun_bin_relative_path()?;

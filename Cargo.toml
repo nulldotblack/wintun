@@ -47,6 +47,7 @@ windows-sys = { version = "0.52", features = [
 ] }
 
 [dev-dependencies]
+dotenvy = "0.15"
 env_logger = "0.11"
 packet = "0.1"
 pcap-file = "2"
