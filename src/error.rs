@@ -25,9 +25,6 @@ pub enum Error {
     LibLoading(#[from] libloading::Error),
 
     #[error(transparent)]
-    WindowsCore(#[from] windows::core::Error),
-
-    #[error(transparent)]
     FromUtf16Error(#[from] std::string::FromUtf16Error),
 
     #[error(transparent)]

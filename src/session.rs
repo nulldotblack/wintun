@@ -4,7 +4,7 @@ use crate::{
     wintun_raw, Adapter, Error, Wintun,
 };
 use std::{ptr, slice, sync::Arc, sync::OnceLock};
-use windows::Win32::{
+use windows_sys::Win32::{
     Foundation::{
         CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0,
     },
@@ -80,7 +80,7 @@ impl Session {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
             match unsafe { GetLastError() } {
                 ERROR_NO_MORE_ITEMS => Ok(None),
-                e => Err(std::io::Error::from_raw_os_error(e.0 as i32).into()),
+                e => Err(std::io::Error::from_raw_os_error(e as i32).into()),
             }
         } else {
             Ok(Some(packet::Packet {
@@ -98,7 +98,7 @@ impl Session {
     pub fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
         Ok(*self
             .read_event
-            .get_or_init(|| unsafe { HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _) }))
+            .get_or_init(|| unsafe { self.wintun.WintunGetReadWaitEvent(self.session.0) as _ }))
     }
 
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
@@ -123,9 +123,9 @@ impl Session {
             let result = unsafe {
                 //SAFETY: We abide by the requirements of WaitForMultipleObjects, handles is a
                 //pointer to valid, aligned, stack memory
-                WaitForMultipleObjects(&handles, FALSE, INFINITE)
+                WaitForMultipleObjects(handles.len() as u32, &handles as _, FALSE, INFINITE)
             };
-            const WAIT_OBJECT_1: WAIT_EVENT = WAIT_EVENT(WAIT_OBJECT_0.0 + 1);
+            const WAIT_OBJECT_1: WAIT_EVENT = WAIT_OBJECT_0 + 1;
             match result {
                 WAIT_FAILED => return Err(util::get_last_error()?.into()),
                 WAIT_OBJECT_0 => {
@@ -146,14 +146,17 @@ impl Session {
 
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
     pub fn shutdown(&self) -> Result<(), Error> {
-        unsafe { SetEvent(self.shutdown_event)? };
+        if FALSE == unsafe { SetEvent(self.shutdown_event) } {
+            return Err(util::get_last_error()?.into());
+        }
         Ok(())
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if let Err(err) = unsafe { CloseHandle(self.shutdown_event) } {
+        if FALSE == unsafe { CloseHandle(self.shutdown_event) } {
+            let err = util::get_last_error();
             log::error!("Failed to close handle of shutdown event: {:?}", err);
         }
 

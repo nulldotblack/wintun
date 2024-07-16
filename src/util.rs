@@ -1,10 +1,10 @@
 use crate::Error;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
-use windows::{
-    core::{GUID, PCWSTR, PWSTR},
+use windows_sys::{
+    core::GUID,
     Win32::{
         Foundation::{
-            GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, HLOCAL, NO_ERROR, WIN32_ERROR,
+            GetLastError, LocalFree, ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, NO_ERROR,
         },
         NetworkManagement::{
             IpHelper::{
@@ -24,6 +24,41 @@ use windows::{
     },
 };
 
+pub(crate) const fn win_guid_to_u128(guid: &GUID) -> u128 {
+    let data4_u64 = u64::from_be_bytes(guid.data4);
+    ((guid.data1 as u128) << 96) | ((guid.data2 as u128) << 80) | ((guid.data3 as u128) << 64) | (data4_u64 as u128)
+}
+
+pub(crate) fn win_pstr_to_string(pstr: ::windows_sys::core::PSTR) -> Result<String, Error> {
+    Ok(unsafe {
+        std::ffi::CStr::from_ptr(pstr as *const std::ffi::c_char)
+            .to_str()
+            .map_err(|e| format!("Invalid UTF-8 sequence: {}", e))
+    }?
+    .to_owned())
+}
+
+pub(crate) fn win_pwstr_to_string(pwstr: ::windows_sys::core::PWSTR) -> Result<String, Error> {
+    unsafe {
+        if pwstr.is_null() {
+            return Err("Null pointer received".into());
+        }
+
+        let mut len = 0;
+        while *pwstr.add(len) != 0 {
+            len += 1;
+        }
+
+        let slice = std::slice::from_raw_parts(pwstr, len);
+
+        use std::os::windows::ffi::OsStringExt;
+        let os_string = std::ffi::OsString::from_wide(slice);
+        os_string
+            .into_string()
+            .map_err(|e| format!("Invalid UTF-8 sequence: {:?}", e).into())
+    }
+}
+
 /// A wrapper struct that allows a type to be Send and Sync
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct UnsafeHandle<T>(pub T);
@@ -35,8 +70,8 @@ unsafe impl<T> Sync for UnsafeHandle<T> {}
 
 pub(crate) fn guid_to_win_style_string(guid: &GUID) -> Result<String, Error> {
     let mut buffer = [0u16; 40];
-    unsafe { StringFromGUID2(guid, &mut buffer) };
-    let guid = unsafe { PCWSTR(&buffer as *const u16).to_string()? };
+    unsafe { StringFromGUID2(guid, &mut buffer as *mut u16, buffer.len() as i32) };
+    let guid = win_pwstr_to_string(buffer.as_ptr() as _)?;
     Ok(guid)
 }
 
@@ -93,11 +128,17 @@ pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> std:
     let settings = DNS_INTERFACE_SETTINGS {
         Version: DNS_INTERFACE_SETTINGS_VERSION1,
         Flags: DNS_SETTING_NAMESERVER as _,
-        NameServer: PWSTR(dns.as_ptr() as _),
-        ..DNS_INTERFACE_SETTINGS::default()
+        NameServer: dns.as_ptr() as _,
+        Domain: std::ptr::null_mut(),
+        SearchList: std::ptr::null_mut(),
+        RegistrationEnabled: 0,
+        RegisterAdapterName: 0,
+        EnableLLMNR: 0,
+        QueryAdapterName: 0,
+        ProfileNameServer: std::ptr::null_mut(),
     };
 
-    match unsafe { SetInterfaceDnsSettings(interface, &settings as *const _).0 } {
+    match unsafe { SetInterfaceDnsSettings(interface, &settings as *const _) } {
         0 => Ok(()),
         e => Err(std::io::Error::from_raw_os_error(e as i32)),
     }
@@ -136,25 +177,27 @@ where
 {
     let mut size = 0;
     let flags = GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS;
-    let family = AF_UNSPEC.0 as u32;
+    let family = AF_UNSPEC as u32;
 
     // Make an initial call to GetAdaptersAddresses to get the
     // size needed into the size variable
-    let result = unsafe { GetAdaptersAddresses(family, flags, None, None, &mut size) };
+    let result = unsafe { GetAdaptersAddresses(family, flags, std::ptr::null_mut(), std::ptr::null_mut(), &mut size) };
 
-    if WIN32_ERROR(result) != ERROR_BUFFER_OVERFLOW {
-        WIN32_ERROR(result).ok()?;
+    if result != ERROR_BUFFER_OVERFLOW {
+        return Err(format!("GetAdaptersAddresses failed: {}", format_message(result)?).into());
     }
     // Allocate memory for the buffer
     let mut addresses: Vec<u8> = vec![0; (size + 4) as usize];
 
     // Make a second call to GetAdaptersAddresses to get the actual data we want
     let result = unsafe {
-        let addr = Some(addresses.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES_LH);
-        GetAdaptersAddresses(family, flags, None, addr, &mut size)
+        let addr = addresses.as_mut_ptr() as *mut IP_ADAPTER_ADDRESSES_LH;
+        GetAdaptersAddresses(family, flags, std::ptr::null_mut(), addr, &mut size)
     };
 
-    WIN32_ERROR(result).ok()?;
+    if ERROR_SUCCESS != result {
+        return Err(format!("GetAdaptersAddresses failed: {}", format_message(result)?).into());
+    }
 
     // If successful, output some information from the data we received
     let mut current_addresses = addresses.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
@@ -175,8 +218,8 @@ where
     //First figure out the size of the buffer needed to store the adapter info
     //SAFETY: We are upholding the contract of GetInterfaceInfo. buf_len is a valid pointer to
     //stack memory
-    let result = unsafe { GetInterfaceInfo(None, &mut buf_len as *mut u32) };
-    if result != NO_ERROR.0 && result != ERROR_INSUFFICIENT_BUFFER.0 {
+    let result = unsafe { GetInterfaceInfo(std::ptr::null_mut(), &mut buf_len as *mut u32) };
+    if result != NO_ERROR && result != ERROR_INSUFFICIENT_BUFFER {
         let err_msg = format_message(result).map_err(Error::from)?;
         log::error!("Failed to get interface info: {}", err_msg);
         return Err(format!("GetInterfaceInfo failed: {}", err_msg).into());
@@ -203,11 +246,11 @@ where
     let mut final_buf_len: u32 = buf_len;
     let result = unsafe {
         GetInterfaceInfo(
-            Some(buf.as_mut_ptr() as *mut IP_INTERFACE_INFO),
+            buf.as_mut_ptr() as *mut IP_INTERFACE_INFO,
             &mut final_buf_len as *mut u32,
         )
     };
-    if result != NO_ERROR.0 {
+    if result != NO_ERROR {
         let err_msg = format_message(result).map_err(Error::from)?;
         //TODO: maybe over allocate the buffer in case the needed size changes between the two
         //calls to GetInterfaceInfo if another adapter is added
@@ -249,8 +292,8 @@ where
 #[allow(dead_code)]
 pub(crate) fn get_interface_info() -> Result<Vec<(u32, String)>, Error> {
     let mut v = vec![];
-    get_interface_info_sys(|interface| {
-        let name = unsafe { PCWSTR(&interface.Name as *const u16).to_string()? };
+    get_interface_info_sys(|mut interface| {
+        let name = win_pwstr_to_string(&mut interface.Name as _)?;
         // Nam is something like: \DEVICE\TCPIP_{29C47F55-C7BD-433A-8BF7-408DFD3B3390}
         // where the GUID is the {29C4...90}, separated by dashes
         let guid = name
@@ -272,24 +315,24 @@ fn MAKELANGID(p: u32, s: u32) -> u32 {
 
 /// Returns a a human readable error message from a windows error code
 pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Error>> {
-    let buf = PWSTR::null();
+    let buf: *mut u16 = std::ptr::null_mut();
 
     let chars_written = unsafe {
         FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER,
-            None,
+            std::ptr::null_mut(),
             error_code,
             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-            PWSTR(&buf as *const windows::core::PWSTR as *mut u16),
+            &buf as *const windows_sys::core::PWSTR as *mut u16,
             0,
-            None,
+            std::ptr::null_mut(),
         )
     };
     if chars_written == 0 {
         return Ok(get_last_error()?);
     }
-    let result = unsafe { buf.to_string()? };
-    if unsafe { !LocalFree(HLOCAL(buf.as_ptr() as *mut _)).is_invalid() } {
+    let result = win_pwstr_to_string(buf)?;
+    if unsafe { !LocalFree(buf as *mut _).is_null() } {
         log::trace!("LocalFree failed: {:?}", get_last_error());
     }
 
@@ -297,9 +340,15 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
 }
 
 pub(crate) fn get_last_error() -> std::io::Result<String> {
-    match unsafe { GetLastError().0 } {
-        0 => Ok("No error".to_string()),
-        e => Err(std::io::Error::from_raw_os_error(e as i32)),
+    get_os_error_from_id(unsafe { GetLastError() as _ })?;
+    Ok("No error".to_string())
+}
+
+#[doc(hidden)]
+pub(crate) fn get_os_error_from_id(id: i32) -> std::io::Result<()> {
+    match id {
+        0 => Ok(()),
+        e => Err(std::io::Error::from_raw_os_error(e)),
     }
 }
 
@@ -337,7 +386,7 @@ pub fn run_command(command: &str, args: &[&str]) -> std::io::Result<Vec<u8>> {
 pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
     unsafe {
         let mut if_table: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
-        match GetIfTable2(&mut if_table as *mut *mut _).0 {
+        match GetIfTable2(&mut if_table as *mut *mut _) {
             0 => (),
             e => return Err(std::io::Error::from_raw_os_error(e as i32)),
         }

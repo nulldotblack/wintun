@@ -13,7 +13,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use subprocess::{Popen, PopenConfig, Redirection};
-use windows::Win32::{
+use windows_sys::Win32::{
     Foundation::NO_ERROR,
     NetworkManagement::IpHelper::{GetBestRoute, MIB_IPFORWARDROW},
     Networking::WinSock::{AF_INET, AF_INET6, SOCKADDR_INET},
@@ -29,11 +29,11 @@ fn _ip_addr_to_win_addr(addr: IpAddr) -> SOCKADDR_INET {
     match addr {
         IpAddr::V4(v4) => {
             result.si_family = AF_INET;
-            result.Ipv4.sin_addr = v4.into();
+            result.Ipv4.sin_addr.S_un.S_addr = u32::from_ne_bytes(v4.octets());
         }
         IpAddr::V6(v6) => {
             result.si_family = AF_INET6;
-            result.Ipv6.sin6_addr = v6.into();
+            result.Ipv6.sin6_addr.u.Byte = v6.octets();
         }
     }
 
@@ -92,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gateway = unsafe {
         let mut row: MIB_IPFORWARDROW = std::mem::zeroed();
         let result = GetBestRoute(u32::from_be_bytes([1, 1, 1, 1]), 0, &mut row as *mut MIB_IPFORWARDROW);
-        if result != NO_ERROR.0 {
+        if result != NO_ERROR {
             log::error!("Failed to get best route: {}", format_message(result)?);
             return Err("Failed to get best route".into());
         }
