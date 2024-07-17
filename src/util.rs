@@ -374,7 +374,6 @@ pub(crate) fn get_last_error() -> std::io::Result<String> {
     Ok("No error".to_string())
 }
 
-#[doc(hidden)]
 pub(crate) fn get_os_error_from_id(id: i32) -> std::io::Result<()> {
     match id {
         0 => Ok(()),
