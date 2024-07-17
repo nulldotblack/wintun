@@ -30,13 +30,11 @@ pub(crate) const fn win_guid_to_u128(guid: &GUID) -> u128 {
     ((guid.data1 as u128) << 96) | ((guid.data2 as u128) << 80) | ((guid.data3 as u128) << 64) | (data4_u64 as u128)
 }
 
-pub(crate) fn win_pstr_to_string(pstr: ::windows_sys::core::PSTR) -> Result<String, Error> {
-    Ok(unsafe {
-        std::ffi::CStr::from_ptr(pstr as *const std::ffi::c_char)
-            .to_str()
-            .map_err(|e| format!("Invalid UTF-8 sequence: {}", e))
-    }?
-    .to_owned())
+pub(crate) unsafe fn win_pstr_to_string(pstr: ::windows_sys::core::PSTR) -> Result<String, Error> {
+    Ok(std::ffi::CStr::from_ptr(pstr as *const std::ffi::c_char)
+        .to_str()
+        .map_err(|e| format!("Invalid UTF-8 sequence: {}", e))?
+        .to_owned())
 }
 
 pub(crate) fn win_pwstr_to_string(pwstr: ::windows_sys::core::PWSTR) -> Result<String, Error> {

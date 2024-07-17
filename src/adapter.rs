@@ -51,7 +51,7 @@ impl Adapter {
         let mut friendly_name = None;
 
         util::get_adapters_addresses(|address| {
-            let name_iter = util::win_pstr_to_string(address.AdapterName)?;
+            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
             if name_iter == name {
                 friendly_name = Some(util::win_pwstr_to_string(address.FriendlyName)?);
             }
@@ -141,7 +141,7 @@ impl Adapter {
             util::get_adapters_addresses(|address: IP_ADAPTER_ADDRESSES_LH| {
                 let frindly_name = util::win_pwstr_to_string(address.FriendlyName)?;
                 if frindly_name == name {
-                    let adapter_name = util::win_pstr_to_string(address.AdapterName)?;
+                    let adapter_name = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
                     let adapter_name_utf16: Vec<u16> = adapter_name.encode_utf16().chain(std::iter::once(0)).collect();
                     let adapter_name_ptr: *const u16 = adapter_name_utf16.as_ptr();
                     let mut adapter: GUID = unsafe { std::mem::zeroed() };
@@ -221,7 +221,7 @@ impl Adapter {
         let mut adapter_index = None;
 
         util::get_adapters_addresses(|address| {
-            let name_iter = util::win_pstr_to_string(address.AdapterName)?;
+            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
             if name_iter == name {
                 adapter_index = unsafe { Some(address.Anonymous1.Anonymous.IfIndex) };
                 // adapter_index = Some(address.Ipv6IfIndex);
@@ -327,7 +327,7 @@ impl Adapter {
         let mut adapter_addresses = vec![];
 
         util::get_adapters_addresses(|adapter| {
-            let name_iter = util::win_pstr_to_string(adapter.AdapterName)?;
+            let name_iter = unsafe { util::win_pstr_to_string(adapter.AdapterName) }?;
             if name_iter == name {
                 let mut current_address = adapter.FirstUnicastAddress;
                 while !current_address.is_null() {
@@ -354,7 +354,7 @@ impl Adapter {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut gateways = vec![];
         util::get_adapters_addresses(|adapter| {
-            let name_iter = util::win_pstr_to_string(adapter.AdapterName)?;
+            let name_iter = unsafe { util::win_pstr_to_string(adapter.AdapterName) }?;
             if name_iter == name {
                 let mut current_gateway = adapter.FirstGatewayAddress;
                 while !current_gateway.is_null() {
@@ -380,7 +380,7 @@ impl Adapter {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut subnet_mask = None;
         util::get_adapters_addresses(|adapter| {
-            let name_iter = util::win_pstr_to_string(adapter.AdapterName)?;
+            let name_iter = unsafe { util::win_pstr_to_string(adapter.AdapterName) }?;
             if name_iter == name {
                 let mut current_address = adapter.FirstUnicastAddress;
                 while !current_address.is_null() {
