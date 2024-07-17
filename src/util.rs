@@ -362,6 +362,7 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
         return Ok(get_last_error()?);
     }
     let result = win_pwstr_to_string(buf)?;
+    // Win32 returns the same handle if LocalFree fails.
     if unsafe { !LocalFree(buf as *mut _).is_null() } {
         log::trace!("LocalFree failed: {:?}", get_last_error());
     }
