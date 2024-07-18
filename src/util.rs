@@ -135,6 +135,8 @@ pub(crate) fn set_interface_dns_servers(interface: GUID, dns: &[IpAddr]) -> crat
         ProfileNameServer: std::ptr::null_mut(),
     };
 
+    // The SetInterfaceDnsSettings function was first introduced in Windows 10,
+    // to compatible with Windows 7, we use the dynamic loading method to call the function.
     // unsafe { SetInterfaceDnsSettings(interface, &settings as *const _) }
 
     type TheFn = unsafe extern "system" fn(interface: GUID, settings: *const DNS_INTERFACE_SETTINGS) -> WIN32_ERROR;
@@ -434,6 +436,7 @@ pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
             }
         }
 
+        // There is no return value for `FreeMibTable`, so we ignore the return value
         FreeMibTable(if_table as *mut _);
         mtu.ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Adapter not found"))
     }
