@@ -11,9 +11,9 @@ use std::{
         Arc,
     },
 };
-use windows::{
-    core::PCWSTR,
-    Win32::Security::Cryptography::{CryptAcquireContextW, CryptGenRandom, CryptReleaseContext, PROV_RSA_FULL},
+use windows_sys::Win32::{
+    Foundation::FALSE,
+    Security::Cryptography::{CryptAcquireContextW, CryptGenRandom, CryptReleaseContext, PROV_RSA_FULL},
 };
 mod misc;
 
@@ -47,6 +47,7 @@ impl std::fmt::Display for NaiveUdpPacket {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     env_logger::init();
     // Loading wintun
     let dll_path = misc::get_wintun_bin_relative_path()?;
@@ -256,14 +257,20 @@ fn extract_udp_packet(packet: &[u8]) -> Result<NaiveUdpPacket, wintun::Error> {
     Err(info.into())
 }
 
-fn generate_random_bytes(len: usize) -> Result<Vec<u8>, windows::core::Error> {
+fn generate_random_bytes(len: usize) -> std::io::Result<Vec<u8>> {
     let mut buf = vec![0u8; len];
     unsafe {
         let mut h_prov = 0_usize;
-        let null = PCWSTR::null();
-        CryptAcquireContextW(&mut h_prov, null, null, PROV_RSA_FULL, 0)?;
-        CryptGenRandom(h_prov, &mut buf)?;
-        CryptReleaseContext(h_prov, 0)?;
+        let null = std::ptr::null_mut();
+        if FALSE == CryptAcquireContextW(&mut h_prov, null, null, PROV_RSA_FULL, 0) {
+            return Err(std::io::Error::last_os_error());
+        }
+        if FALSE == CryptGenRandom(h_prov, buf.len() as _, buf.as_mut_ptr()) {
+            return Err(std::io::Error::last_os_error());
+        }
+        if FALSE == CryptReleaseContext(h_prov, 0) {
+            return Err(std::io::Error::last_os_error());
+        }
     };
     Ok(buf)
 }

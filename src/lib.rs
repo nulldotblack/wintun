@@ -101,7 +101,7 @@ pub use crate::{
     session::Session,
     util::{format_message, get_active_network_interface_gateways, run_command},
 };
-pub use windows::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
+pub use windows_sys::Win32::{Foundation::HANDLE, NetworkManagement::Ndis::NET_LUID_LH};
 
 // TODO: Get bindgen to scrape these from the `wintun.h`
 // We need to make sure these stay up to date
@@ -188,7 +188,7 @@ impl std::fmt::Display for Version {
 pub fn get_running_driver_version(wintun: &Wintun) -> Result<Version> {
     let version = unsafe { wintun.WintunGetRunningDriverVersion() };
     if version == 0 {
-        Err(Error::from(util::get_last_error()))
+        Err(util::get_last_error()?.into())
     } else {
         let v = version.to_be_bytes();
         Ok(Version {

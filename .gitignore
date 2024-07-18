@@ -1,5 +1,6 @@
 .vscode/
 .VSCodeCounter/
+.env
 tmp/
 build/
 out.pcap

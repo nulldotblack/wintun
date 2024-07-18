@@ -1,6 +1,6 @@
 [package]
 name = "wintun"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = [
     "null.black Inc. <opensource@null.black>",
@@ -29,8 +29,8 @@ panic_on_unsent_packets = []
 c2rust-bitfields = "0.18"
 libloading = "0.8"
 log = "0.4"
-thiserror = "1.0"
-windows = { version = "0.52", features = [
+thiserror = "1"
+windows-sys = { version = "0.52", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
     "Win32_Security_Cryptography",
@@ -39,6 +39,7 @@ windows = { version = "0.52", features = [
     "Win32_Networking_WinSock",
     "Win32_System_Threading",
     "Win32_System_Com",
+    "Win32_System_Rpc",
     "Win32_Security",
     "Win32_Foundation",
     "Win32_System_Ioctl",
@@ -46,7 +47,8 @@ windows = { version = "0.52", features = [
 ] }
 
 [dev-dependencies]
-env_logger = "0.10"
+dotenvy = "0.15"
+env_logger = "0.11"
 packet = "0.1"
-pcap-file = "2.0"
+pcap-file = "2"
 subprocess = "0.2"

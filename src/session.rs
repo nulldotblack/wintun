@@ -4,7 +4,7 @@ use crate::{
     wintun_raw, Adapter, Error, Wintun,
 };
 use std::{ptr, slice, sync::Arc, sync::OnceLock};
-use windows::Win32::{
+use windows_sys::Win32::{
     Foundation::{
         CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, FALSE, HANDLE, WAIT_EVENT, WAIT_FAILED, WAIT_OBJECT_0,
     },
@@ -46,7 +46,7 @@ impl Session {
     pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, Error> {
         let ptr = unsafe { self.wintun.WintunAllocateSendPacket(self.session.0, size as u32) };
         if ptr.is_null() {
-            Err(Error::from(util::get_last_error()))
+            Err(util::get_last_error()?.into())
         } else {
             Ok(packet::Packet {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -78,14 +78,9 @@ impl Session {
         debug_assert!(size <= u16::MAX as u32);
         if ptr.is_null() {
             //Wintun returns ERROR_NO_MORE_ITEMS instead of blocking if packets are not available
-            if let Err(last_error) = unsafe { GetLastError() } {
-                if last_error.code() == ERROR_NO_MORE_ITEMS.to_hresult() {
-                    Ok(None)
-                } else {
-                    Err(last_error.into())
-                }
-            } else {
-                Err("Unknow error".into())
+            match unsafe { GetLastError() } {
+                ERROR_NO_MORE_ITEMS => Ok(None),
+                e => Err(std::io::Error::from_raw_os_error(e as i32).into()),
             }
         } else {
             Ok(Some(packet::Packet {
@@ -103,7 +98,7 @@ impl Session {
     pub fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
         Ok(*self
             .read_event
-            .get_or_init(|| unsafe { HANDLE(self.wintun.WintunGetReadWaitEvent(self.session.0) as _) }))
+            .get_or_init(|| unsafe { self.wintun.WintunGetReadWaitEvent(self.session.0) as _ }))
     }
 
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
@@ -128,11 +123,11 @@ impl Session {
             let result = unsafe {
                 //SAFETY: We abide by the requirements of WaitForMultipleObjects, handles is a
                 //pointer to valid, aligned, stack memory
-                WaitForMultipleObjects(&handles, FALSE, INFINITE)
+                WaitForMultipleObjects(handles.len() as u32, &handles as _, FALSE, INFINITE)
             };
-            const WAIT_OBJECT_1: WAIT_EVENT = WAIT_EVENT(WAIT_OBJECT_0.0 + 1);
+            const WAIT_OBJECT_1: WAIT_EVENT = WAIT_OBJECT_0 + 1;
             match result {
-                WAIT_FAILED => return Err(Error::from(util::get_last_error())),
+                WAIT_FAILED => return Err(util::get_last_error()?.into()),
                 WAIT_OBJECT_0 => {
                     //We have data!
                     continue;
@@ -151,14 +146,17 @@ impl Session {
 
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
     pub fn shutdown(&self) -> Result<(), Error> {
-        unsafe { SetEvent(self.shutdown_event)? };
+        if FALSE == unsafe { SetEvent(self.shutdown_event) } {
+            return Err(util::get_last_error()?.into());
+        }
         Ok(())
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if let Err(err) = unsafe { CloseHandle(self.shutdown_event) } {
+        if FALSE == unsafe { CloseHandle(self.shutdown_event) } {
+            let err = util::get_last_error();
             log::error!("Failed to close handle of shutdown event: {:?}", err);
         }
 

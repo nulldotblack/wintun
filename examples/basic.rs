@@ -7,6 +7,7 @@ mod misc;
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::dotenv().ok();
     env_logger::init();
     let dll_path = misc::get_wintun_bin_relative_path()?;
     let wintun = unsafe { wintun::load_from_path(dll_path)? };

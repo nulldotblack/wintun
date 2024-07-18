@@ -18,8 +18,8 @@ use std::{
     sync::Arc,
     sync::OnceLock,
 };
-use windows::{
-    core::{GUID, PCSTR, PCWSTR},
+use windows_sys::{
+    core::GUID,
     Win32::{
         Foundation::FALSE,
         NetworkManagement::{
@@ -51,9 +51,9 @@ impl Adapter {
         let mut friendly_name = None;
 
         util::get_adapters_addresses(|address| {
-            let name_iter = unsafe { address.AdapterName.to_string()? };
+            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
             if name_iter == name {
-                friendly_name = unsafe { Some(address.FriendlyName.to_string()?) };
+                friendly_name = Some(unsafe { util::win_pwstr_to_string(address.FriendlyName)? });
             }
             Ok(())
         })?;
@@ -94,7 +94,11 @@ impl Adapter {
 
         let guid = match guid {
             Some(guid) => guid,
-            None => GUID::new()?.to_u128(),
+            None => {
+                let mut guid: GUID = unsafe { std::mem::zeroed() };
+                unsafe { windows_sys::Win32::System::Rpc::UuidCreate(&mut guid as *mut GUID) };
+                util::win_guid_to_u128(&guid)
+            }
         };
 
         crate::log::set_default_logger_if_unset(wintun);
@@ -135,18 +139,18 @@ impl Adapter {
         } else {
             let mut guid = None;
             util::get_adapters_addresses(|address: IP_ADAPTER_ADDRESSES_LH| {
-                let frindly_name = PCWSTR(address.FriendlyName.0 as *const u16);
-                let frindly_name = unsafe { frindly_name.to_string()? };
+                let frindly_name = unsafe { util::win_pwstr_to_string(address.FriendlyName)? };
                 if frindly_name == name {
-                    let adapter_name = unsafe { address.AdapterName.to_string()? };
+                    let adapter_name = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
                     let adapter_name_utf16: Vec<u16> = adapter_name.encode_utf16().chain(std::iter::once(0)).collect();
                     let adapter_name_ptr: *const u16 = adapter_name_utf16.as_ptr();
-                    let adapter = unsafe { CLSIDFromString(PCWSTR(adapter_name_ptr))? };
+                    let mut adapter: GUID = unsafe { std::mem::zeroed() };
+                    unsafe { CLSIDFromString(adapter_name_ptr, &mut adapter as *mut GUID) };
                     guid = Some(adapter);
                 }
                 Ok(())
             })?;
-            let guid = guid.ok_or("Unable to find matching GUID")?.to_u128();
+            let guid = util::win_guid_to_u128(&guid.ok_or("Unable to find matching GUID")?);
             Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
@@ -182,7 +186,7 @@ impl Adapter {
         if result.is_null() {
             Err("WintunStartSession failed".into())
         } else {
-            let shutdown_event = unsafe { CreateEventA(None, FALSE, FALSE, PCSTR::null())? };
+            let shutdown_event = unsafe { CreateEventA(std::ptr::null_mut(), FALSE, FALSE, std::ptr::null_mut()) };
             Ok(session::Session {
                 session: UnsafeHandle(result),
                 wintun: self.wintun.clone(),
@@ -217,7 +221,7 @@ impl Adapter {
         let mut adapter_index = None;
 
         util::get_adapters_addresses(|address| {
-            let name_iter = unsafe { address.AdapterName.to_string()? };
+            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
             if name_iter == name {
                 adapter_index = unsafe { Some(address.Anonymous1.Anonymous.IfIndex) };
                 // adapter_index = Some(address.Ipv6IfIndex);
@@ -277,8 +281,12 @@ impl Adapter {
 
     /// Sets the DNS servers for this adapter
     pub fn set_dns_servers(&self, dns_servers: &[IpAddr]) -> Result<(), Error> {
-        let interface = GUID::from(self.get_guid());
-        Ok(util::set_interface_dns_servers(interface, dns_servers)?)
+        let interface = GUID::from_u128(self.get_guid());
+        if let Err(err) = util::set_interface_dns_servers(interface, dns_servers) {
+            log::error!("Failed to set DNS servers in first attempt: {}", err);
+            util::set_adapter_dns_servers(&self.get_name()?, dns_servers)?;
+        }
+        Ok(())
     }
 
     /// Sets the network addresses of this adapter, including network address, subnet mask, and gateway
@@ -319,7 +327,7 @@ impl Adapter {
         let mut adapter_addresses = vec![];
 
         util::get_adapters_addresses(|adapter| {
-            let name_iter = unsafe { adapter.AdapterName.to_string()? };
+            let name_iter = unsafe { util::win_pstr_to_string(adapter.AdapterName) }?;
             if name_iter == name {
                 let mut current_address = adapter.FirstUnicastAddress;
                 while !current_address.is_null() {
@@ -346,7 +354,7 @@ impl Adapter {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut gateways = vec![];
         util::get_adapters_addresses(|adapter| {
-            let name_iter = unsafe { adapter.AdapterName.to_string()? };
+            let name_iter = unsafe { util::win_pstr_to_string(adapter.AdapterName) }?;
             if name_iter == name {
                 let mut current_gateway = adapter.FirstGatewayAddress;
                 while !current_gateway.is_null() {
@@ -372,7 +380,7 @@ impl Adapter {
         let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
         let mut subnet_mask = None;
         util::get_adapters_addresses(|adapter| {
-            let name_iter = unsafe { adapter.AdapterName.to_string()? };
+            let name_iter = unsafe { util::win_pstr_to_string(adapter.AdapterName) }?;
             if name_iter == name {
                 let mut current_address = adapter.FirstUnicastAddress;
                 while !current_address.is_null() {
@@ -387,7 +395,10 @@ impl Adapter {
                         match address {
                             IpAddr::V4(_) => {
                                 let mut mask = 0_u32;
-                                unsafe { ConvertLengthToIpv4Mask(masklength as u32, &mut mask as *mut u32)? };
+                                match unsafe { ConvertLengthToIpv4Mask(masklength as u32, &mut mask as *mut u32) } {
+                                    0 => {}
+                                    err => return Err(std::io::Error::from_raw_os_error(err as i32).into()),
+                                }
                                 subnet_mask = Some(IpAddr::V4(Ipv4Addr::from(mask.to_le_bytes())));
                             }
                             IpAddr::V6(_) => {
