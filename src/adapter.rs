@@ -53,7 +53,7 @@ impl Adapter {
         util::get_adapters_addresses(|address| {
             let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
             if name_iter == name {
-                friendly_name = Some(util::win_pwstr_to_string(address.FriendlyName)?);
+                friendly_name = Some(unsafe { util::win_pwstr_to_string(address.FriendlyName)? });
             }
             Ok(())
         })?;
@@ -139,7 +139,7 @@ impl Adapter {
         } else {
             let mut guid = None;
             util::get_adapters_addresses(|address: IP_ADAPTER_ADDRESSES_LH| {
-                let frindly_name = util::win_pwstr_to_string(address.FriendlyName)?;
+                let frindly_name = unsafe { util::win_pwstr_to_string(address.FriendlyName)? };
                 if frindly_name == name {
                     let adapter_name = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
                     let adapter_name_utf16: Vec<u16> = adapter_name.encode_utf16().chain(std::iter::once(0)).collect();

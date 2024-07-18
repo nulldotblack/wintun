@@ -37,25 +37,23 @@ pub(crate) unsafe fn win_pstr_to_string(pstr: ::windows_sys::core::PSTR) -> Resu
         .to_owned())
 }
 
-pub(crate) fn win_pwstr_to_string(pwstr: ::windows_sys::core::PWSTR) -> Result<String, Error> {
-    unsafe {
-        if pwstr.is_null() {
-            return Err("Null pointer received".into());
-        }
-
-        let mut len = 0;
-        while *pwstr.add(len) != 0 {
-            len += 1;
-        }
-
-        let slice = std::slice::from_raw_parts(pwstr, len);
-
-        use std::os::windows::ffi::OsStringExt;
-        let os_string = std::ffi::OsString::from_wide(slice);
-        os_string
-            .into_string()
-            .map_err(|e| format!("Invalid UTF-8 sequence: {:?}", e).into())
+pub(crate) unsafe fn win_pwstr_to_string(pwstr: ::windows_sys::core::PWSTR) -> Result<String, Error> {
+    if pwstr.is_null() {
+        return Err("Null pointer received".into());
     }
+
+    let mut len = 0;
+    while *pwstr.add(len) != 0 {
+        len += 1;
+    }
+
+    let slice = std::slice::from_raw_parts(pwstr, len);
+
+    use std::os::windows::ffi::OsStringExt;
+    let os_string = std::ffi::OsString::from_wide(slice);
+    os_string
+        .into_string()
+        .map_err(|e| format!("Invalid UTF-8 sequence: {:?}", e).into())
 }
 
 /// A wrapper struct that allows a type to be Send and Sync
@@ -70,7 +68,7 @@ unsafe impl<T> Sync for UnsafeHandle<T> {}
 pub(crate) fn guid_to_win_style_string(guid: &GUID) -> Result<String, Error> {
     let mut buffer = [0u16; 40];
     unsafe { StringFromGUID2(guid, &mut buffer as *mut u16, buffer.len() as i32) };
-    let guid = win_pwstr_to_string(buffer.as_ptr() as _)?;
+    let guid = unsafe { win_pwstr_to_string(buffer.as_ptr() as _)? };
     Ok(guid)
 }
 
@@ -321,7 +319,7 @@ where
 pub(crate) fn get_interface_info() -> Result<Vec<(u32, String)>, Error> {
     let mut v = vec![];
     get_interface_info_sys(|mut interface| {
-        let name = win_pwstr_to_string(&mut interface.Name as _)?;
+        let name = unsafe { win_pwstr_to_string(&mut interface.Name as _)? };
         // Nam is something like: \DEVICE\TCPIP_{29C47F55-C7BD-433A-8BF7-408DFD3B3390}
         // where the GUID is the {29C4...90}, separated by dashes
         let guid = name
@@ -359,7 +357,7 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
     if chars_written == 0 {
         return Ok(get_last_error()?);
     }
-    let result = win_pwstr_to_string(buf)?;
+    let result = unsafe { win_pwstr_to_string(buf)? };
     // Win32 returns the same handle if LocalFree fails.
     if unsafe { !LocalFree(buf as *mut _).is_null() } {
         log::trace!("LocalFree failed: {:?}", get_last_error());
