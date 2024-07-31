@@ -21,11 +21,11 @@ pub struct Session {
 
     /// Windows event handle that is signaled by the wintun driver when data becomes available to
     /// read
-    pub(crate) read_event: OnceLock<HANDLE>,
+    pub(crate) read_event: OnceLock<UnsafeHandle<HANDLE>>,
 
     /// Windows event handle that is signaled when [`Session::shutdown`] is called force blocking
     /// readers to exit
-    pub(crate) shutdown_event: HANDLE,
+    pub(crate) shutdown_event: UnsafeHandle<HANDLE>,
 
     /// The adapter that owns this session
     pub(crate) adapter: Arc<Adapter>,
@@ -93,12 +93,14 @@ impl Session {
         }
     }
 
+    /// # Safety
     /// Returns the low level read event handle that is signaled when more data becomes available
     /// to read
-    pub fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
-        Ok(*self
+    pub unsafe fn get_read_wait_event(&self) -> Result<HANDLE, Error> {
+        Ok(self
             .read_event
-            .get_or_init(|| unsafe { self.wintun.WintunGetReadWaitEvent(self.session.0) as _ }))
+            .get_or_init(|| UnsafeHandle(self.wintun.WintunGetReadWaitEvent(self.session.0) as _))
+            .0)
     }
 
     /// Blocks until a packet is available, returning the next packet in the receive queue once this happens.
@@ -119,7 +121,7 @@ impl Session {
                 }
             }
             //Wait on both the read handle and the shutdown handle so that we stop when requested
-            let handles = [self.get_read_wait_event()?, self.shutdown_event];
+            let handles = [unsafe { self.get_read_wait_event()? }, self.shutdown_event.0];
             let result = unsafe {
                 //SAFETY: We abide by the requirements of WaitForMultipleObjects, handles is a
                 //pointer to valid, aligned, stack memory
@@ -146,7 +148,7 @@ impl Session {
 
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
     pub fn shutdown(&self) -> Result<(), Error> {
-        if FALSE == unsafe { SetEvent(self.shutdown_event) } {
+        if FALSE == unsafe { SetEvent(self.shutdown_event.0) } {
             return Err(util::get_last_error()?.into());
         }
         Ok(())
@@ -155,7 +157,7 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if FALSE == unsafe { CloseHandle(self.shutdown_event) } {
+        if FALSE == unsafe { CloseHandle(self.shutdown_event.0) } {
             let err = util::get_last_error();
             log::error!("Failed to close handle of shutdown event: {:?}", err);
         }

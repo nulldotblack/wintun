@@ -191,7 +191,7 @@ impl Adapter {
                 session: UnsafeHandle(result),
                 wintun: self.wintun.clone(),
                 read_event: OnceLock::new(),
-                shutdown_event,
+                shutdown_event: UnsafeHandle(shutdown_event),
                 adapter: Arc::clone(self),
             })
         }
