@@ -30,7 +30,7 @@ c2rust-bitfields = "0.18"
 libloading = "0.8"
 log = "0.4"
 thiserror = "1"
-windows-sys = { version = "0.52", features = [
+windows-sys = { version = "0.59", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
     "Win32_Security_Cryptography",
