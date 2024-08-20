@@ -33,9 +33,10 @@ pub struct Adapter {
     wintun: Wintun,
     guid: u128,
     index: u32,
+    luid: NET_LUID_LH,
 }
 
-fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
+fn _get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
     let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
     unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
     unsafe { std::mem::transmute(luid) }
@@ -45,17 +46,8 @@ impl Adapter {
     /// Returns the `Friendly Name` of this adapter,
     /// which is the human readable name shown in Windows
     pub fn get_name(&self) -> Result<String, Error> {
-        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
-        let mut friendly_name = None;
-
-        util::get_adapters_addresses(|address| {
-            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
-            if name_iter == name {
-                friendly_name = Some(unsafe { util::win_pwstr_to_string(address.FriendlyName)? });
-            }
-            Ok(())
-        })?;
-        friendly_name.ok_or(format!("Unable to find matching {}", name).into())
+        let name = crate::ffi::luid_to_alias(&self.luid)?;
+        Ok(util::decode_utf16(&name))
     }
 
     /// Sets the `Friendly Name` of this adapter,
@@ -116,6 +108,7 @@ impl Adapter {
                 wintun: wintun.clone(),
                 guid,
                 index,
+                luid,
             }))
         }
     }
@@ -147,6 +140,7 @@ impl Adapter {
                 wintun: wintun.clone(),
                 guid,
                 index,
+                luid,
             }))
         }
     }
@@ -191,7 +185,7 @@ impl Adapter {
 
     /// Returns the Win32 LUID for this adapter
     pub fn get_luid(&self) -> NET_LUID_LH {
-        get_adapter_luid(&self.wintun, self.adapter.0)
+        self.luid
     }
 
     /// Set `MTU` of this adapter

@@ -442,6 +442,11 @@ pub(crate) fn get_adapter_mtu(luid: &NET_LUID_LH) -> std::io::Result<usize> {
     }
 }
 
+pub fn decode_utf16(string: &[u16]) -> String {
+    let end = string.iter().position(|b| *b == 0).unwrap_or(string.len());
+    String::from_utf16_lossy(&string[..end])
+}
+
 #[repr(C, align(1))]
 #[derive(c2rust_bitfields::BitfieldStruct)]
 #[allow(non_snake_case)]
