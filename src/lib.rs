@@ -77,6 +77,7 @@
 
 mod adapter;
 mod error;
+mod ffi;
 mod log;
 mod packet;
 mod session;
