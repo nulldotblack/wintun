@@ -36,12 +36,6 @@ pub struct Adapter {
     luid: NET_LUID_LH,
 }
 
-fn _get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
-    let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
-    unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
-    unsafe { std::mem::transmute(luid) }
-}
-
 impl Adapter {
     /// Returns the `Friendly Name` of this adapter,
     /// which is the human readable name shown in Windows
@@ -76,8 +70,6 @@ impl Adapter {
     /// Creates a new wintun adapter inside the name `name` with tunnel type `tunnel_type`
     ///
     /// Optionally a GUID can be specified that will become the GUID of this adapter once created.
-    /// Adapters obtained via this function will be able to return their adapter index via
-    /// [`Adapter::get_adapter_index`]
     pub fn create(wintun: &Wintun, name: &str, tunnel_type: &str, guid: Option<u128>) -> Result<Arc<Adapter>, Error> {
         let name_utf16: Vec<_> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let tunnel_type_utf16: Vec<u16> = tunnel_type.encode_utf16().chain(std::iter::once(0)).collect();
@@ -114,13 +106,6 @@ impl Adapter {
     }
 
     /// Attempts to open an existing wintun interface name `name`.
-    ///
-    /// Adapters opened via this call will have an unknown GUID meaning [`Adapter::get_adapter_index`]
-    /// will always fail because knowing the adapter's GUID is required to determine its index.
-    /// Currently a workaround is to delete and re-create a new adapter every time one is needed so
-    /// that it gets created with a known GUID, allowing [`Adapter::get_adapter_index`] to works as
-    /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
-    /// or via the Win32 API, so PR's that solve this issue are always welcome!
     pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
         let name_utf16: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
 
