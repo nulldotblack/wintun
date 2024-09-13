@@ -46,7 +46,7 @@ impl Session {
     pub fn allocate_send_packet(self: &Arc<Self>, size: u16) -> Result<packet::Packet, Error> {
         let ptr = unsafe { self.wintun.WintunAllocateSendPacket(self.session.0, size as u32) };
         if ptr.is_null() {
-            Err(util::get_last_error()?.into())
+            Err(util::get_last_error().into())
         } else {
             Ok(packet::Packet {
                 //SAFETY: ptr is non null, aligned for u8, and readable for up to size bytes (which
@@ -127,7 +127,7 @@ impl Session {
             };
             const WAIT_OBJECT_1: WAIT_EVENT = WAIT_OBJECT_0 + 1;
             match result {
-                WAIT_FAILED => return Err(util::get_last_error()?.into()),
+                WAIT_FAILED => return Err(util::get_last_error().into()),
                 WAIT_OBJECT_0 => {
                     //We have data!
                     continue;
@@ -147,7 +147,7 @@ impl Session {
     /// Cancels any active calls to [`Session::receive_blocking`] making them instantly return Err(_) so that session can be shutdown cleanly
     pub fn shutdown(&self) -> Result<(), Error> {
         if FALSE == unsafe { SetEvent(self.shutdown_event) } {
-            return Err(util::get_last_error()?.into());
+            return Err(util::get_last_error().into());
         }
         Ok(())
     }

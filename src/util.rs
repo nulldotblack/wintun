@@ -1,5 +1,5 @@
 use crate::Error;
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::{io::ErrorKind, net::{IpAddr, Ipv6Addr, SocketAddr}};
 use windows_sys::{
     core::GUID,
     Win32::{
@@ -342,7 +342,7 @@ fn MAKELANGID(p: u32, s: u32) -> u32 {
 }
 
 /// Returns a a human readable error message from a windows error code
-pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Error>> {
+pub fn format_message(error_code: u32) -> Result<String, Error> {
     let buf: *mut u16 = std::ptr::null_mut();
 
     let chars_written = unsafe {
@@ -357,7 +357,7 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
         )
     };
     if chars_written == 0 {
-        return Ok(get_last_error()?);
+        return Err(get_last_error().into());
     }
     let result = unsafe { win_pwstr_to_string(buf)? };
     // Win32 returns the same handle if LocalFree fails.
@@ -368,15 +368,12 @@ pub fn format_message(error_code: u32) -> Result<String, Box<dyn std::error::Err
     Ok(result)
 }
 
-pub(crate) fn get_last_error() -> std::io::Result<String> {
-    get_os_error_from_id(unsafe { GetLastError() as _ })?;
-    Ok("No error".to_string())
-}
-
-pub(crate) fn get_os_error_from_id(id: i32) -> std::io::Result<()> {
+pub(crate) fn get_last_error() -> std::io::Error {
+    let id = unsafe { GetLastError() } as i32;
+    debug_assert!(id != 0, "get_last_error called but there is no error");
     match id {
-        0 => Ok(()),
-        e => Err(std::io::Error::from_raw_os_error(e)),
+        0 => ErrorKind::Other.into(),
+        e => std::io::Error::from_raw_os_error(e),
     }
 }
 

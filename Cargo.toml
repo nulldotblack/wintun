@@ -24,13 +24,18 @@ targets = [
 
 [features]
 panic_on_unsent_packets = []
+default = ["async"]
+async = ["futures", "atomic-waker", "pin-project-lite"]
 
 [dependencies]
-c2rust-bitfields = "0.18"
+atomic-waker = { version = "1.1", optional = true }
+c2rust-bitfields = "0.19"
+futures = { version = "0.3", optional = true }
 libloading = "0.8"
 log = "0.4"
+pin-project-lite = { version = "0.2.14", optional = true }
 thiserror = "1"
-windows-sys = { version = "0.52", features = [
+windows-sys = { version = "0.59", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_System_SystemServices",
     "Win32_Security_Cryptography",
