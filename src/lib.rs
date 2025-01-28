@@ -1,7 +1,7 @@
 //! Safe rust idiomatic bindings for the Wintun C library: <https://wintun.net>
 //!
 //! All features of the Wintun library are wrapped using pure rust types and functions to make
-//! usage feel ergonomic.  
+//! usage feel ergonomic.
 //!
 //! # Usage
 //!
@@ -59,20 +59,20 @@
 //! //drop(adapter)
 //! //And the adapter closes its resources when dropped
 //! ```
-//!    
+//!
 //! See `examples/wireshark.rs` for a more complete example that writes received packets to a pcap
 //! file.
 //!
 //! # Features
 //!
 //! - `panic_on_unsent_packets`: Panics if a send packet is dropped without being sent. Useful for
-//! debugging packet issues because unsent packets that are dropped without being sent hold up
-//! wintun's internal ring buffer.
+//!   debugging packet issues because unsent packets that are dropped without being sent hold up
+//!   wintun's internal ring buffer.
 //!
 //! # TODO:
 //! - Add async support
-//! Requires hooking into a windows specific reactor and registering read interest on wintun's read
-//! handle. Asyncify other slow operations via tokio::spawn_blocking. As always, PR's are welcome!
+//!   Requires hooking into a windows specific reactor and registering read interest on wintun's read
+//!   handle. Asyncify other slow operations via tokio::spawn_blocking. As always, PR's are welcome!
 //!
 
 mod adapter;
