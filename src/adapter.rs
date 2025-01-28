@@ -119,7 +119,7 @@ impl Adapter {
             let luid = crate::ffi::alias_to_luid(&name_utf16)?;
             let index = crate::ffi::luid_to_index(&luid)?;
             let guid = crate::ffi::luid_to_guid(&luid)?;
-            let guid = unsafe { std::mem::transmute(guid) };
+            let guid = unsafe { std::mem::transmute::<GUID, u128>(guid) };
             Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
