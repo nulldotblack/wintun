@@ -3,6 +3,16 @@
 This format is based on [Keep a Changelog](https://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [0.5.1] - 2025-07-18
+## Fixed
+- Use `ConvertInterfaceLuidToIndex` to obtain the index.
+  - `Adapter::get_adapter_index` will now work regardless of initialization mode
+
+## [0.5.0] - 2025-07-18
+
+## Changed
+- Upgrade to windows-sys crate
+
 ## [0.4.0] - 2024-01-12
 
 ## Added
