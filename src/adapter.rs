@@ -22,11 +22,8 @@ use windows_sys::{
     core::GUID,
     Win32::{
         Foundation::FALSE,
-        NetworkManagement::{
-            IpHelper::{ConvertLengthToIpv4Mask, IP_ADAPTER_ADDRESSES_LH},
-            Ndis::NET_LUID_LH,
-        },
-        System::{Com::CLSIDFromString, Threading::CreateEventA},
+        NetworkManagement::{IpHelper::ConvertLengthToIpv4Mask, Ndis::NET_LUID_LH},
+        System::Threading::CreateEventA,
     },
 };
 
@@ -35,29 +32,16 @@ pub struct Adapter {
     adapter: UnsafeHandle<wintun_raw::WINTUN_ADAPTER_HANDLE>,
     wintun: Wintun,
     guid: u128,
-}
-
-fn get_adapter_luid(wintun: &Wintun, adapter: wintun_raw::WINTUN_ADAPTER_HANDLE) -> NET_LUID_LH {
-    let mut luid: wintun_raw::NET_LUID = unsafe { std::mem::zeroed() };
-    unsafe { wintun.WintunGetAdapterLUID(adapter, &mut luid as *mut wintun_raw::NET_LUID) };
-    unsafe { std::mem::transmute(luid) }
+    index: u32,
+    luid: NET_LUID_LH,
 }
 
 impl Adapter {
     /// Returns the `Friendly Name` of this adapter,
     /// which is the human readable name shown in Windows
     pub fn get_name(&self) -> Result<String, Error> {
-        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
-        let mut friendly_name = None;
-
-        util::get_adapters_addresses(|address| {
-            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
-            if name_iter == name {
-                friendly_name = Some(unsafe { util::win_pwstr_to_string(address.FriendlyName)? });
-            }
-            Ok(())
-        })?;
-        friendly_name.ok_or(format!("Unable to find matching {}", name).into())
+        let name = crate::ffi::luid_to_alias(&self.luid)?;
+        Ok(util::decode_utf16(&name))
     }
 
     /// Sets the `Friendly Name` of this adapter,
@@ -86,8 +70,6 @@ impl Adapter {
     /// Creates a new wintun adapter inside the name `name` with tunnel type `tunnel_type`
     ///
     /// Optionally a GUID can be specified that will become the GUID of this adapter once created.
-    /// Adapters obtained via this function will be able to return their adapter index via
-    /// [`Adapter::get_adapter_index`]
     pub fn create(wintun: &Wintun, name: &str, tunnel_type: &str, guid: Option<u128>) -> Result<Arc<Adapter>, Error> {
         let name_utf16: Vec<_> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let tunnel_type_utf16: Vec<u16> = tunnel_type.encode_utf16().chain(std::iter::once(0)).collect();
@@ -111,22 +93,19 @@ impl Adapter {
         if result.is_null() {
             Err("Failed to create adapter".into())
         } else {
+            let luid = crate::ffi::alias_to_luid(&name_utf16)?;
+            let index = crate::ffi::luid_to_index(&luid)?;
             Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
+                index,
+                luid,
             }))
         }
     }
 
     /// Attempts to open an existing wintun interface name `name`.
-    ///
-    /// Adapters opened via this call will have an unknown GUID meaning [`Adapter::get_adapter_index`]
-    /// will always fail because knowing the adapter's GUID is required to determine its index.
-    /// Currently a workaround is to delete and re-create a new adapter every time one is needed so
-    /// that it gets created with a known GUID, allowing [`Adapter::get_adapter_index`] to works as
-    /// expected. There is likely a way to get the GUID of our adapter using the Windows Registry
-    /// or via the Win32 API, so PR's that solve this issue are always welcome!
     pub fn open(wintun: &Wintun, name: &str) -> Result<Arc<Adapter>, Error> {
         let name_utf16: Vec<u16> = OsStr::new(name).encode_wide().chain(std::iter::once(0)).collect();
 
@@ -137,24 +116,16 @@ impl Adapter {
         if result.is_null() {
             Err("WintunOpenAdapter failed".into())
         } else {
-            let mut guid = None;
-            util::get_adapters_addresses(|address: IP_ADAPTER_ADDRESSES_LH| {
-                let frindly_name = unsafe { util::win_pwstr_to_string(address.FriendlyName)? };
-                if frindly_name == name {
-                    let adapter_name = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
-                    let adapter_name_utf16: Vec<u16> = adapter_name.encode_utf16().chain(std::iter::once(0)).collect();
-                    let adapter_name_ptr: *const u16 = adapter_name_utf16.as_ptr();
-                    let mut adapter: GUID = unsafe { std::mem::zeroed() };
-                    unsafe { CLSIDFromString(adapter_name_ptr, &mut adapter as *mut GUID) };
-                    guid = Some(adapter);
-                }
-                Ok(())
-            })?;
-            let guid = util::win_guid_to_u128(&guid.ok_or("Unable to find matching GUID")?);
+            let luid = crate::ffi::alias_to_luid(&name_utf16)?;
+            let index = crate::ffi::luid_to_index(&luid)?;
+            let guid = crate::ffi::luid_to_guid(&luid)?;
+            let guid = unsafe { std::mem::transmute::<GUID, u128>(guid) };
             Ok(Arc::new(Adapter {
                 adapter: UnsafeHandle(result),
                 wintun: wintun.clone(),
                 guid,
+                index,
+                luid,
             }))
         }
     }
@@ -199,7 +170,7 @@ impl Adapter {
 
     /// Returns the Win32 LUID for this adapter
     pub fn get_luid(&self) -> NET_LUID_LH {
-        get_adapter_luid(&self.wintun, self.adapter.0)
+        self.luid
     }
 
     /// Set `MTU` of this adapter
@@ -217,18 +188,7 @@ impl Adapter {
     /// Returns the Win32 interface index of this adapter. Useful for specifying the interface
     /// when executing `netsh interface ip` commands
     pub fn get_adapter_index(&self) -> Result<u32, Error> {
-        let name = util::guid_to_win_style_string(&GUID::from_u128(self.guid))?;
-        let mut adapter_index = None;
-
-        util::get_adapters_addresses(|address| {
-            let name_iter = unsafe { util::win_pstr_to_string(address.AdapterName) }?;
-            if name_iter == name {
-                adapter_index = unsafe { Some(address.Anonymous1.Anonymous.IfIndex) };
-                // adapter_index = Some(address.Ipv6IfIndex);
-            }
-            Ok(())
-        })?;
-        adapter_index.ok_or(format!("Unable to find matching {}", name).into())
+        Ok(self.index)
     }
 
     /// Sets the IP address for this adapter, using command `netsh`.
